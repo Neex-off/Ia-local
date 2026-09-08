@@ -1,0 +1,397 @@
+<!doctype html>
+<!-- Ia-local (Jarvis) — Copyright (c) 2026 Neexx (Nixovel) — https://github.com/Neex-off/Ia-local — Créé par Neexx (Nixovel). Voir LICENSE. Ne pas retirer. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S.</title>
+<style>
+  :root {
+    --bg: #04080f;
+    --cyan: #4fd8ff;
+    --cyan-dim: rgba(79, 216, 255, 0.35);
+    --amber: #ffb457;
+    --red: #ff5c6c;
+    --text: #cfe9f5;
+    --muted: rgba(207, 233, 245, 0.55);
+    --panel: rgba(8, 20, 34, 0.55);
+    --line: rgba(79, 216, 255, 0.18);
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --quick: 150ms; --std: 400ms; --slow: 800ms;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  body::before { content: ""; position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, rgba(20, 60, 90, 0.35), transparent 60%),
+                repeating-linear-gradient(0deg, transparent 0 3px, rgba(255,255,255,0.012) 3px 4px); }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .hud { position: fixed; padding: 14px 18px; background: var(--panel); border: 1px solid var(--line);
+    backdrop-filter: blur(8px); border-radius: 6px; opacity: 0; transform: translateY(14px);
+    transition: opacity var(--slow) var(--ease), transform var(--slow) var(--ease); }
+  .hud::before, .hud::after { content: ""; position: absolute; width: 14px; height: 14px; border-color: var(--cyan); border-style: solid; }
+  .hud::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  .hud::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+  body.booted .hud { opacity: 1; transform: none; }
+  .hud h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); font-weight: 600; }
+
+  #title { top: 22px; left: 24px; padding: 10px 18px; transition-delay: 80ms; }
+  #title .name { font-size: 26px; letter-spacing: 8px; font-weight: 300; color: #fff; text-shadow: 0 0 18px var(--cyan-dim); }
+  #title .sub { font-size: 11px; letter-spacing: 2px; color: var(--muted); margin-top: 2px; }
+
+  #status { top: 22px; left: 50%; transform: translate(-50%, 14px); padding: 8px 22px; text-align: center; transition-delay: 160ms; }
+  body.booted #status { transform: translate(-50%, 0); }
+  #status .state { font-size: 13px; letter-spacing: 4px; text-transform: uppercase; color: var(--cyan); transition: color var(--std) var(--ease); }
+  #status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); margin-right: 10px;
+    box-shadow: 0 0 10px var(--cyan); vertical-align: middle; transition: background var(--std), box-shadow var(--std); }
+  body[data-state="thinking"] #status .state, body[data-state="tool"] #status .state { color: var(--amber); }
+  body[data-state="thinking"] #status .dot, body[data-state="tool"] #status .dot { background: var(--amber); box-shadow: 0 0 10px var(--amber); animation: blink 0.9s var(--ease) infinite; }
+  body[data-state="speaking"] #status .dot { animation: blink 0.5s var(--ease) infinite; }
+  body[data-state="idle"] #status .state { color: var(--muted); }
+  body[data-state="idle"] #status .dot { background: var(--muted); box-shadow: none; }
+  @keyframes blink { 50% { opacity: 0.25; } }
+
+  #stats { top: 22px; right: 24px; width: 250px; transition-delay: 240ms; }
+  .bar { height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; margin: 5px 0 9px; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--cyan), #9ef); transition: width var(--slow) var(--ease); }
+  .row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .row b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  #log { left: 24px; bottom: 96px; width: 380px; max-height: 46vh; overflow-y: auto; transition-delay: 320ms; }
+  #log, #tools { overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  #log::-webkit-scrollbar, #tools::-webkit-scrollbar { width: 4px; }
+  #log::-webkit-scrollbar-thumb, #tools::-webkit-scrollbar-thumb { background: var(--line); }
+  .msg { margin: 0 0 10px; font-size: 13px; line-height: 1.45; opacity: 0; transform: translateX(-10px);
+    animation: msgin var(--std) var(--ease) forwards; }
+  @keyframes msgin { to { opacity: 1; transform: none; } }
+  .msg .who { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); margin-bottom: 2px; }
+  .msg.user .who { color: var(--muted); }
+  .msg.heard { color: var(--muted); font-style: italic; font-size: 12px; }
+  .msg.error { color: var(--red); }
+
+  #tools { right: 24px; bottom: 96px; width: 300px; max-height: 40vh; overflow-y: auto; transition-delay: 400ms; }
+  .tool { font-family: Consolas, "Courier New", monospace; font-size: 11.5px; margin: 0 0 8px; padding: 6px 8px;
+    border-left: 2px solid var(--amber); background: rgba(255, 180, 87, 0.06); opacity: 0; animation: msgin var(--std) var(--ease) forwards; }
+  .tool .n { color: var(--amber); }
+  .tool .r { color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 60px; overflow: hidden; }
+
+  #input { left: 50%; bottom: 24px; transform: translate(-50%, 14px); width: min(760px, 92vw); padding: 10px 12px;
+    display: flex; gap: 8px; align-items: center; transition-delay: 480ms; }
+  body.booted #input { transform: translate(-50%, 0); }
+  #input input { flex: 1; background: transparent; border: 0; border-bottom: 1px solid var(--line); color: #fff;
+    font-size: 15px; padding: 8px 6px; outline: none; font-family: inherit; transition: border-color var(--quick); }
+  #input input:focus { border-color: var(--cyan); }
+  button { background: transparent; color: var(--cyan); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px;
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; font-family: inherit;
+    transition: background var(--quick) var(--ease), transform var(--quick) var(--ease), border-color var(--quick); }
+  button:hover { background: rgba(79, 216, 255, 0.1); border-color: var(--cyan); }
+  button:active { transform: scale(0.96); }
+  button.off { color: var(--red); border-color: rgba(255, 92, 108, 0.4); }
+
+  #boot { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 10;
+    transition: opacity var(--slow) var(--ease); font-size: 12px; letter-spacing: 3px; color: var(--cyan); text-transform: uppercase; }
+  #boot.gone { opacity: 0; pointer-events: none; }
+  #boot .steps { margin-top: 220px; text-align: center; line-height: 2; }
+  #boot .steps div { opacity: 0.35; } #boot .steps div.on { opacity: 1; }
+  /* ---- Vue projets : la sphère se range en bas à gauche, les projets occupent l'écran ---- */
+  #scene { transform-origin: 0 100%; transition: transform var(--slow) var(--ease); will-change: transform; }
+  /* Colonne de gauche : conversation en haut, sphère en bas. Colonne de droite : les projets. */
+  /* origine en bas à gauche : après scale(0.36), le centre de la sphère tombe vers 18 % de la largeur et 82 % de la hauteur */
+  body.view-projects #scene { transform: translate(-1vw, -1vh) scale(0.5); }
+  body.view-projects #tools, body.view-projects #stats { opacity: 0; pointer-events: none; transform: translateY(14px); }
+  body.view-projects #log { left: 24px; top: 92px; bottom: auto; width: calc(35vw - 24px); max-height: 32vh; }
+  body.view-projects #input { left: auto; right: 24px; transform: none; width: calc(62vw - 24px); }
+  #projects { position: fixed; top: 92px; right: 24px; bottom: 100px; left: 38vw; display: none; overflow: auto; }
+  body.view-projects #projects { display: block; }
+  #projects::-webkit-scrollbar { width: 4px; } #projects::-webkit-scrollbar-thumb { background: var(--line); }
+  #projects .head { display: flex; align-items: baseline; gap: 18px; margin: 0 0 18px 4px; }
+  #projects h1 { margin: 0; font-size: 22px; letter-spacing: 6px; font-weight: 300; color: #fff; text-shadow: 0 0 18px var(--cyan-dim); }
+  #projects .count { color: var(--muted); font-size: 12px; letter-spacing: 2px; }
+  #projects .back { margin-left: auto; }
+  .pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; align-items: start; }
+  .proj { position: relative; padding: 14px 16px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    backdrop-filter: blur(8px); cursor: pointer; opacity: 0; transform: translateY(16px);
+    animation: projin var(--std) var(--ease) forwards; transition: border-color var(--quick), transform var(--quick) var(--ease), box-shadow var(--std); }
+  .proj:hover { border-color: var(--cyan); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(79,216,255,0.12); }
+  .proj.linked { border-color: rgba(255,180,87,0.45); }
+  .proj.linked::after { content: "lié"; position: absolute; top: 10px; right: 12px; font-size: 9px; letter-spacing: 2px; color: var(--amber); text-transform: uppercase; }
+  .proj.github { border-style: dashed; }
+  .proj.github .k { color: #b8a6ff; }
+  .proj.github::before { content: "GitHub"; position: absolute; top: 10px; right: 12px; font-size: 9px; letter-spacing: 2px; color: #b8a6ff; text-transform: uppercase; }
+  .proj.github.linked::before { right: 44px; }
+  .proj .k { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--cyan); }
+  .proj .n { font-size: 17px; color: #fff; margin: 2px 0 6px; font-weight: 500; }
+  .proj .m { font-size: 11px; color: var(--muted); }
+  .proj .br { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .proj .br span { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 8px; font-size: 11px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); font-family: Consolas, monospace; }
+  .proj .br span.cur { border-color: var(--cyan); color: var(--cyan); }
+  .proj .br span.more { color: var(--muted); border-style: dashed; }
+  .proj .lk { margin-top: 8px; font-size: 11px; color: var(--amber); }
+  @keyframes projin { to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .hud, .msg, .tool, .proj { transition: none; animation: none; opacity: 1; transform: none; } }
+</style>
+</head>
+<body data-state="loading">
+<canvas id="scene"></canvas>
+
+<div id="boot"><div class="steps" id="bootsteps"><div class="on">Initialisation des systèmes</div></div></div>
+
+<div class="hud" id="title"><div class="name" id="name">J.A.R.V.I.S.</div><div class="sub" id="model">—</div></div>
+<div class="hud" id="status"><span class="dot"></span><span class="state" id="state">Chargement</span></div>
+<div class="hud" id="stats">
+  <h2>Systèmes</h2>
+  <div class="row"><span>Mémoire GPU</span><b id="vram">—</b></div><div class="bar"><i id="vrambar"></i></div>
+  <div class="row"><span>Charge GPU</span><b id="util">—</b></div><div class="bar"><i id="utilbar"></i></div>
+  <div class="row"><span>Température</span><b id="temp">—</b></div>
+  <div class="row" style="margin-top:6px"><span>Réseau</span><b id="net">local uniquement</b></div>
+</div>
+<div id="projects">
+  <div class="head"><h1>PROJETS</h1><span class="count" id="pcount"></span><button class="back" id="pback">Retour</button></div>
+  <div class="pgrid" id="pgrid"></div>
+</div>
+<div class="hud" id="log"><h2>Conversation</h2><div id="msgs"></div></div>
+<div class="hud" id="tools"><h2>Outils</h2><div id="toollist"><div style="font-size:12px;color:var(--muted)">Aucun outil utilisé pour l'instant.</div></div></div>
+<form class="hud" id="input" autocomplete="off">
+  <input id="txt" placeholder="Écris à Jarvis, ou dis « Bonjour Jarvis »…" autocomplete="off">
+  <button type="button" id="wake" title="Réveiller">Réveil</button>
+  <button type="button" id="stop" title="Couper la parole">Stop</button>
+  <button type="button" id="mic" title="Micro">Micro</button>
+</form>
+
+<script>
+// ------------------------------------------------------------------ état
+const S = { state: 'loading', awake: false, level: 0, target: 0, src: 'mic', speech: false, mix: {}, t0: performance.now(), lastLevel: 0 };
+const STATES = ['idle', 'listening', 'thinking', 'tool', 'speaking', 'loading'];
+STATES.forEach(s => S.mix[s] = s === 'loading' ? 1 : 0);
+const LABEL = { loading: 'Chargement', idle: 'En veille', listening: 'À l’écoute', thinking: 'Réflexion', tool: 'Outil en cours', speaking: 'Réponse' };
+const $ = id => document.getElementById(id);
+
+function setState(state, awake) {
+  S.state = state; S.awake = awake;
+  document.body.dataset.state = state;
+  $('state').textContent = LABEL[state] || state;
+  $('wake').textContent = awake ? 'Dormir' : 'Réveil';
+}
+
+// ------------------------------------------------------------------ WebSocket
+let ws, retry = 800;
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { retry = 800; };
+  ws.onclose = () => { setTimeout(connect, retry); retry = Math.min(retry * 1.5, 5000); };
+  ws.onmessage = e => handle(JSON.parse(e.data));
+}
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+function handle(ev) {
+  switch (ev.type) {
+    case 'hello':
+      $('name').textContent = ev.name.toUpperCase().split('').join('.') + '.';
+      $('model').textContent = `${ev.model} · 100 % local`;
+      $('mic').classList.toggle('off', !ev.mic);
+      (ev.history || []).forEach(handle);
+      setState(ev.state, ev.awake);
+      if (ev.state !== 'loading') boot();
+      break;
+    case 'loading': {
+      const box = $('bootsteps');
+      [...box.children].forEach(c => c.classList.remove('on'));
+      const d = document.createElement('div'); d.className = 'on'; d.textContent = ev.step; box.appendChild(d);
+      if (ev.done) setTimeout(boot, 600);
+      break;
+    }
+    case 'model': $('model').textContent = `${ev.model} · 100 % local`; addMsg('heard', '', `Modèle : ${ev.model}`); break;
+    case 'view': setView(ev.view, ev.projects); break;
+    case 'state': setState(ev.state, ev.awake); if (ev.standby && ev.state === 'idle') $('state').textContent = 'Veille profonde'; break;
+    case 'standby': if (ev.on) { $('state').textContent = 'Veille profonde'; } else if (S.state === 'idle') { $('state').textContent = LABEL.idle; } break;
+    case 'level': S.src = ev.src; S.target = Math.min(1, ev.v * (ev.src === 'mic' ? 12 : 5)); S.speech = ev.speech; S.lastLevel = performance.now(); break;
+    case 'heard': if (!ev.for_me) addMsg('heard', '', `« ${ev.text} » (pas pour moi)`); else addMsg('heard', '', `🔔 « ${ev.text} »`); break;
+    case 'user': addMsg('user', 'Toi', ev.text); break;
+    case 'assistant': addMsg('ai', $('name').textContent, ev.text + (ev.seconds ? `  ·  ${ev.seconds}s` : '')); break;
+    case 'tool': addTool(ev); break;
+    case 'error': addMsg('error', 'Erreur', ev.text); break;
+    case 'stats':
+      $('vram').textContent = `${ev.vram_used.toFixed(1)} / ${ev.vram_total.toFixed(0)} Go`;
+      $('vrambar').style.width = (100 * ev.vram_used / ev.vram_total) + '%';
+      $('util').textContent = `${ev.gpu_util.toFixed(0)} %`; $('utilbar').style.width = ev.gpu_util + '%';
+      $('temp').textContent = `${ev.gpu_temp.toFixed(0)} °C`;
+      break;
+  }
+}
+
+let booted = false;
+function boot() {
+  if (booted) return; booted = true;
+  $('boot').classList.add('gone');
+  requestAnimationFrame(() => document.body.classList.add('booted'));
+  setTimeout(() => { $('boot').hidden = true; }, 900);  // au cas où la transition serait figée (onglet en arrière-plan)
+}
+
+function addMsg(cls, who, text) {
+  const box = $('msgs'); const d = document.createElement('div'); d.className = 'msg ' + cls;
+  d.innerHTML = (who ? `<div class="who"></div>` : '') + `<div class="body"></div>`;
+  if (who) d.querySelector('.who').textContent = who;
+  d.querySelector('.body').textContent = text;
+  box.appendChild(d); while (box.children.length > 40) box.firstChild.remove();
+  $('log').scrollTop = $('log').scrollHeight;
+}
+function addTool(ev) {
+  const box = $('toollist'); if (box.dataset.empty !== '0') { box.innerHTML = ''; box.dataset.empty = '0'; }
+  const d = document.createElement('div'); d.className = 'tool';
+  d.innerHTML = `<div><span class="n"></span>(<span class="a"></span>)</div><div class="r"></div>`;
+  d.querySelector('.n').textContent = ev.name;
+  d.querySelector('.a').textContent = Object.entries(ev.args || {}).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ');
+  d.querySelector('.r').textContent = (ev.result || '').slice(0, 220);
+  box.appendChild(d); while (box.children.length > 12) box.firstChild.remove();
+  $('tools').scrollTop = $('tools').scrollHeight;
+}
+
+// ------------------------------------------------------------------ vue projets
+function setView(view, projects) {
+  if (view === 'projects') {
+    renderProjects(projects || []);
+    document.body.classList.add('view-projects');
+  } else {
+    document.body.classList.remove('view-projects');
+  }
+}
+function renderProjects(list) {
+  const grid = $('pgrid'); grid.innerHTML = '';
+  $('pcount').textContent = `${list.length} projet${list.length > 1 ? 's' : ''}`;
+  list.forEach((p, i) => {
+    const d = document.createElement('div'); d.className = 'proj' + (p.links && p.links.length ? ' linked' : '') + (p.source === 'github' ? ' github' : '');
+    d.style.animationDelay = Math.min(i * 40, 480) + 'ms';
+    const branches = (p.branches || []).slice(0, 6);
+    const more = (p.branches || []).length - branches.length;
+    d.innerHTML = `<div class="k"></div><div class="n"></div><div class="m"></div>` +
+      (p.git ? `<div class="br"></div>` : '') + (p.links && p.links.length ? `<div class="lk"></div>` : '');
+    d.querySelector('.k').textContent = p.kind + (p.git ? ' · git' : '');
+    d.querySelector('.n').textContent = p.name;
+    d.querySelector('.m').textContent = `${p.parent} · modifié le ${p.modified}` + (p.description ? ` · ${p.description.slice(0, 60)}` : '');
+    if (p.git) {
+      const br = d.querySelector('.br');
+      if (branches.length === 0 && p.branch) branches.push(p.branch);
+      branches.forEach(b => { const s = document.createElement('span'); s.textContent = b; if (b === p.branch) s.className = 'cur'; br.appendChild(s); });
+      if (more > 0) { const s = document.createElement('span'); s.className = 'more'; s.textContent = `+${more}`; br.appendChild(s); }
+    }
+    if (p.links && p.links.length) d.querySelector('.lk').textContent = '⟷ ' + p.links.join(', ');
+    d.title = p.path; d.onclick = () => send({ type: 'open', path: p.path });
+    grid.appendChild(d);
+  });
+}
+$('pback').onclick = () => { setView('home'); send({ type: 'view', view: 'home' }); };
+
+// ------------------------------------------------------------------ contrôles
+$('input').addEventListener('submit', e => { e.preventDefault(); const v = $('txt').value.trim(); if (v) { send({ type: 'text', text: v }); $('txt').value = ''; } });
+$('wake').onclick = () => send({ type: S.awake ? 'sleep' : 'wake' });
+$('stop').onclick = () => send({ type: 'stop' });
+$('mic').onclick = () => { const off = $('mic').classList.toggle('off'); send({ type: 'mic', enabled: !off }); };
+window.addEventListener('keydown', e => { if (e.key === 'Escape') send({ type: 'stop' }); });
+
+// ------------------------------------------------------------------ scène (canvas)
+const cv = $('scene'), ctx = cv.getContext('2d');
+let W, H, CX, CY, R, DPR;
+function resize() { DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * DPR; cv.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); CX = W / 2; CY = H / 2 - 20; R = Math.min(W, H) * 0.19; }
+addEventListener('resize', resize); resize();
+
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const N = 140, particles = [];
+for (let i = 0; i < N; i++) particles.push({ a: Math.random() * Math.PI * 2, r: 1.25 + Math.random() * 1.4, s: (0.05 + Math.random() * 0.12) * (Math.random() < 0.5 ? 1 : -1), o: 0.2 + Math.random() * 0.6, z: Math.random() });
+const wave = new Array(96).fill(0);
+let rot = 0, sweep = 0, prevT = performance.now();
+
+// Couleurs par état (r,g,b)
+const COL = { idle: [110, 150, 175], listening: [79, 216, 255], thinking: [255, 180, 87], tool: [255, 180, 87], speaking: [120, 235, 255], loading: [79, 216, 255] };
+const lerp = (a, b, t) => a + (b - a) * t;
+function mixedColor() { let r = 0, g = 0, b = 0; for (const s of STATES) { const m = S.mix[s]; r += COL[s][0] * m; g += COL[s][1] * m; b += COL[s][2] * m; } return [r, g, b]; }
+const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+
+function frame(now) {
+  const dt = Math.min(0.05, (now - prevT) / 1000); prevT = now;
+  const t = (now - S.t0) / 1000;
+
+  // Transition d'état : 500 ms, easing doux
+  for (const s of STATES) S.mix[s] = lerp(S.mix[s], s === S.state ? 1 : 0, 1 - Math.pow(0.001, dt / 0.5));
+  const m = S.mix, col = mixedColor();
+  const energy = m.listening * 0.35 + m.thinking * 0.8 + m.tool * 1 + m.speaking * 0.6 + m.loading * 0.5;
+
+  // Niveau sonore : attaque rapide, retombée lente. Sans nouvelle mesure depuis 300 ms, on retombe.
+  if (now - S.lastLevel > 300) S.target = 0;
+  S.level = S.target > S.level ? lerp(S.level, S.target, 1 - Math.pow(0.001, dt / 0.06)) : lerp(S.level, S.target, 1 - Math.pow(0.001, dt / 0.35));
+  wave.push(S.level); wave.shift();
+
+  const breathe = 0.5 + 0.5 * Math.sin(t * (reduced ? 0 : 1.2));         // respiration 5 s en veille
+  const pulse = 1 + 0.03 * breathe * m.idle + S.level * 0.22;
+  const speed = reduced ? 0 : 0.12 + energy * 0.9;
+  rot += dt * speed; sweep += dt * (0.9 + m.listening * 1.5);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // --- Ambiant : grille polaire discrète + hexagone lent
+  ctx.save(); ctx.translate(CX, CY);
+  ctx.strokeStyle = rgba(col, 0.05); ctx.lineWidth = 1;
+  for (let i = 1; i <= 4; i++) { ctx.beginPath(); ctx.arc(0, 0, R * (0.9 + i * 0.55), 0, Math.PI * 2); ctx.stroke(); }
+  ctx.rotate(-rot * 0.15); ctx.strokeStyle = rgba(col, 0.08); ctx.beginPath();
+  for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2, rr = R * 2.9; ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); } ctx.closePath(); ctx.stroke();
+  ctx.restore();
+
+  // --- Halo
+  const halo = ctx.createRadialGradient(CX, CY, R * 0.2, CX, CY, R * (2.2 + S.level));
+  halo.addColorStop(0, rgba(col, 0.22 + S.level * 0.25 + energy * 0.08)); halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H);
+
+  // --- Particules en orbite (secondaire) : s'écartent avec la voix
+  for (const p of particles) {
+    p.a += dt * p.s * (1 + energy * 2.5);
+    const rr = R * (p.r + S.level * 0.5 * p.z + Math.sin(t * 0.7 + p.z * 9) * 0.05);
+    const x = CX + Math.cos(p.a) * rr, y = CY + Math.sin(p.a) * rr * 0.98;
+    ctx.fillStyle = rgba(col, p.o * (0.35 + energy * 0.5 + S.level * 0.4));
+    ctx.fillRect(x, y, 1.6 + p.z, 1.6 + p.z);
+  }
+
+  // --- Anneaux d'arcs (primaire) : 3 anneaux, sens alternés, vitesses différentes
+  ctx.save(); ctx.translate(CX, CY); ctx.lineCap = 'round';
+  const rings = [
+    { r: 1.22, w: 2.5, segs: 3, gap: 0.55, dir: 1, sp: 1.0, a: 0.9 },
+    { r: 1.42, w: 1.2, segs: 8, gap: 0.25, dir: -1, sp: 0.55, a: 0.55 },
+    { r: 1.62, w: 4, segs: 2, gap: 1.6, dir: 1, sp: 0.3, a: 0.35 },
+  ];
+  for (const g of rings) {
+    ctx.strokeStyle = rgba(col, g.a); ctx.lineWidth = g.w;
+    const base = rot * g.dir * g.sp, span = (Math.PI * 2) / g.segs;
+    for (let i = 0; i < g.segs; i++) { ctx.beginPath(); ctx.arc(0, 0, R * g.r * pulse, base + i * span, base + (i + 1) * span - g.gap); ctx.stroke(); }
+  }
+  // Graduations
+  ctx.strokeStyle = rgba(col, 0.35); ctx.lineWidth = 1;
+  for (let i = 0; i < 72; i++) { const a = i / 72 * Math.PI * 2 + rot * 0.2, big = i % 6 === 0; ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * R * 1.88, Math.sin(a) * R * 1.88); ctx.lineTo(Math.cos(a) * R * (big ? 1.98 : 1.93), Math.sin(a) * R * (big ? 1.98 : 1.93)); ctx.stroke(); }
+  // Balayage radar quand il écoute
+  if (m.listening > 0.02) { const sw = ctx.createConicGradient ? ctx.createConicGradient(sweep, 0, 0) : null;
+    if (sw) { sw.addColorStop(0, rgba(col, 0.28 * m.listening)); sw.addColorStop(0.18, 'rgba(0,0,0,0)'); sw.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = sw; ctx.beginPath(); ctx.arc(0, 0, R * 1.85, 0, Math.PI * 2); ctx.fill(); } }
+  // Onde circulaire de la voix (quand il parle ou qu'on parle)
+  const wa = Math.max(m.speaking, m.listening * 0.7);
+  if (wa > 0.02) { ctx.strokeStyle = rgba(col, 0.75 * wa); ctx.lineWidth = 1.5; ctx.beginPath();
+    for (let i = 0; i <= wave.length; i++) { const k = i % wave.length, a = i / wave.length * Math.PI * 2 - Math.PI / 2;
+      const rr = R * (1.02 + wave[k] * 0.3 * wa); const x = Math.cos(a) * rr, y = Math.sin(a) * rr; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke(); }
+  ctx.restore();
+
+  // --- Cœur
+  const core = ctx.createRadialGradient(CX, CY, 0, CX, CY, R * 0.95 * pulse);
+  core.addColorStop(0, `rgba(255,255,255,${0.85 + S.level * 0.15})`); core.addColorStop(0.25, rgba(col, 0.75)); core.addColorStop(0.7, rgba(col, 0.12)); core.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = core; ctx.beginPath(); ctx.arc(CX, CY, R * 0.95 * pulse, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = rgba(col, 0.9); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(CX, CY, R * 0.62 * pulse, 0, Math.PI * 2); ctx.stroke();
+  // Réflexion pendant la pensée : petits arcs qui tournent vite autour du cœur
+  if (m.thinking + m.tool > 0.02) { const k = m.thinking + m.tool; ctx.save(); ctx.translate(CX, CY); ctx.rotate(-rot * 3); ctx.strokeStyle = rgba(col, 0.9 * k); ctx.lineWidth = 3;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(0, 0, R * 0.78, i * 2.1, i * 2.1 + 0.9); ctx.stroke(); } ctx.restore(); }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+connect();
+</script>
+</body>
+</html>

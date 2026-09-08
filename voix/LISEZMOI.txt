@@ -1,0 +1,3 @@
+jarvis_defaut.wav : voix par défaut de Jarvis (référence française, ne pas supprimer).
+Pour une autre voix, dépose ici un fichier ma_voix.wav (10 à 20 secondes, une seule voix, en français,
+sans musique) : il sera utilisé automatiquement à la place.

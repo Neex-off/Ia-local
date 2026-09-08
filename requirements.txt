@@ -1,0 +1,11 @@
+ollama>=0.6
+rich
+requests
+ddgs
+beautifulsoup4
+fpdf2
+python-docx
+fastapi
+uvicorn[standard]
+pystray
+pillow

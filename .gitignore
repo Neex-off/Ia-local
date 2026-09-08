@@ -1,0 +1,17 @@
+# Environnement et données personnelles : jamais publiés
+.venv/
+venv/
+__pycache__/
+*.pyc
+index/
+memoire/
+workspace/*
+!workspace/.gitkeep
+jarvis.log
+*.log
+.claude/
+voix/ma_voix.wav
+voix/test_*.wav
+github-public/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,21 @@
+# Voix et contrôle de l'écran. PyTorch et chatterbox-tts sont installés à part par install.sh / install.ps1.
+faster-whisper>=1.1
+sounddevice
+soundfile
+librosa==0.11.0
+numpy<2
+s3tokenizer
+transformers==5.2.0
+diffusers==0.29.0
+resemble-perth>=1.0.0
+conformer==0.3.2
+safetensors==0.5.3
+spacy-pkuseg
+pykakasi==2.3.0
+pyloudnorm
+omegaconf
+pyautogui
+mss
+pyperclip
+pywinauto; sys_platform == "win32"
+pygetwindow; sys_platform != "win32"
