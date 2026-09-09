@@ -47,11 +47,19 @@ if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
   $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 }
 Start-Process ollama -ArgumentList "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue; Start-Sleep 3
+New-Item -ItemType Directory -Force workspace | Out-Null
+Say "Modèle léger d'abord (gemma4:e4b-it-qat, ~5 Go) : dès qu'il est là, vous pouvez tester"
+ollama pull gemma4:e4b-it-qat
+Write-Host ""
+Write-Host "  >>> Le modèle léger est prêt : vous pouvez DÉJÀ tester en double-cliquant sur jarvis.bat" -ForegroundColor Green
+Write-Host "  >>> Jarvis démarre avec le modèle présent. Le modèle standard (complet) se télécharge maintenant ;" -ForegroundColor Green
+Write-Host "  >>> quand c'est fini, dites « passe au modèle standard » ou relancez Jarvis." -ForegroundColor Green
+Write-Host ""
+Say "Modèle standard (gemma4:12b, ~8 Go) : écran, fichiers, sites, documents"
 ollama pull gemma4:12b
-if ($All) { ollama pull gemma4:e4b-it-qat; ollama pull granite4.1:8b; ollama pull gemma4:26b-a4b-it-qat }
+if ($All) { Say "Modèles recherche et puissant"; ollama pull granite4.1:8b; ollama pull gemma4:26b-a4b-it-qat }
 
 Say "6/6 Terminé"
-New-Item -ItemType Directory -Force workspace | Out-Null
 Write-Host @"
 
 Installation terminée.

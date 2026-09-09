@@ -32,21 +32,44 @@ for _stream in (sys.stdout, sys.stderr):
 console = Console()
 
 
-def ensure_model(model: str) -> None:
-    """Vérifie qu'Ollama répond et que le modèle est présent, sinon le télécharge."""
+def model_tier(model: str) -> str | None:
+    """Nom du profil du catalogue (léger, recherche, standard, puissant) pour un modèle, ou None."""
+    return next((t for t in config.MODEL_ORDER if config.MODELS[t]["name"] == model), None)
+
+
+def ensure_model(model: str, fallback: bool = True) -> str:
+    """Vérifie qu'Ollama répond et renvoie le modèle à utiliser.
+
+    Si `model` est présent : lui. Sinon, avec fallback, le premier modèle du catalogue déjà installé
+    (le léger d'abord) pour pouvoir tester tout de suite pendant qu'un autre se télécharge.
+    Sinon, télécharge `model`.
+    """
     try:
         names = {m.model for m in ollama.list().models}
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Impossible de joindre Ollama : {exc}[/red]")
         console.print("Lance Ollama (l'icône dans la barre des tâches) puis réessaie.")
         sys.exit(1)
-    if model not in names and f"{model}:latest" not in names:
-        console.print(f"[yellow]Modèle {model} absent, téléchargement...[/yellow]")
-        for chunk in ollama.pull(model, stream=True):
-            if chunk.total and chunk.completed:
-                pct = 100 * chunk.completed / chunk.total
-                console.print(f"  {chunk.status} {pct:5.1f}%", end="\r")
-        console.print()
+
+    def present(m: str) -> bool:
+        return m in names or f"{m}:latest" in names
+
+    if present(model):
+        return model
+    if fallback:
+        for tier in config.MODEL_ORDER:
+            cand = config.MODELS[tier]["name"]
+            if present(cand):
+                console.print(f"[yellow]Modèle {model} pas encore installé : démarrage avec {cand} (profil {tier}). "
+                              f"Pour l'avoir : ollama pull {model}[/yellow]")
+                return cand
+    console.print(f"[yellow]Modèle {model} absent, téléchargement...[/yellow]")
+    for chunk in ollama.pull(model, stream=True):
+        if chunk.total and chunk.completed:
+            pct = 100 * chunk.completed / chunk.total
+            console.print(f"  {chunk.status} {pct:5.1f}%", end="\r")
+    console.print()
+    return model
 
 
 _ARTIFACTS = re.compile(r"^\s*\.?thought\b\s*|<\|?channel\|?>|<\|?end\|?>|<\|?message\|?>|<start_of_turn>|<end_of_turn>", re.I)
@@ -226,10 +249,13 @@ def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, 
 
 def main() -> None:
     model = sys.argv[1] if len(sys.argv) > 1 else config.MODEL
-    ensure_model(model)
+    model = ensure_model(model)
     file_index.get().start_background()  # index des fichiers du PC, sans bloquer
 
     import tools as _tools
+    _tools.CURRENT_MODEL = model
+    if (tier := model_tier(model)) is not None:
+        config.ACTIVE_TOOLS = config.MODELS[tier].get("tools")
     state = {"model": model}
 
     def _switch(name, tool_names):
@@ -272,7 +298,7 @@ def main() -> None:
             continue
         if user.startswith("/model "):
             model = user.split(maxsplit=1)[1].strip()
-            ensure_model(model)
+            model = ensure_model(model, fallback=False)
             console.print(f"[dim]Modèle : {model}[/dim]")
             continue
 

@@ -26,7 +26,7 @@ import ollama
 
 import config
 import file_index
-from agent import ensure_model, run_turn
+from agent import ensure_model, model_tier, run_turn
 from voice import Speaker, Transcriber, is_sleep_phrase, is_stop_phrase, listen, strip_wake_word
 
 VOICE_SYSTEM_PROMPT = config.SYSTEM_PROMPT + f"""
@@ -194,7 +194,16 @@ class JarvisCore:
         self.messages[0]["content"] = (VOICE_SYSTEM_PROMPT + "\n\n" + skills.get().prompt_section()
                                        + "\n\n" + memory.prompt_section() + "\n\n" + memory.knowledge_prompt_section())
         self.emit({"type": "loading", "step": f"Modèle de langage {self.model}", "done": False})
-        ensure_model(self.model)
+        wanted = self.model
+        self.model = ensure_model(wanted)
+        if self.model != wanted:  # modèle configuré pas encore téléchargé : on démarre avec celui qui est là
+            tier = model_tier(self.model)
+            config.ACTIVE_TOOLS = config.MODELS[tier].get("tools") if tier else None
+            tools.CURRENT_MODEL = self.model
+            self.emit({"type": "model", "model": self.model, "tools": config.ACTIVE_TOOLS})
+            self.emit({"type": "assistant", "text": f"Le modèle {wanted} n'est pas encore installé : je démarre avec "
+                       f"{self.model} (profil {tier or 'inconnu'}). Quand « ollama pull {wanted} » sera terminé, "
+                       f"dis « passe au modèle {model_tier(wanted) or wanted} »."})
         _unload_others(self.model)
         self.emit({"type": "loading", "step": "Reconnaissance vocale (Whisper)", "done": False})
         self.ears = Transcriber()

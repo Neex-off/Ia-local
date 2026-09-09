@@ -65,12 +65,22 @@ if ! command -v ollama >/dev/null 2>&1; then
   else curl -fsSL https://ollama.com/install.sh | sh; fi
 fi
 (ollama serve >/dev/null 2>&1 &) ; sleep 3
-ollama pull gemma4:12b
-if [ "$ALL" = "1" ]; then ollama pull gemma4:e4b-it-qat; ollama pull granite4.1:8b; ollama pull gemma4:26b-a4b-it-qat; fi
-
-say "6/6 Terminé"
 chmod +x jarvis.sh jarvis-console.sh jarvis-arreter.sh 2>/dev/null || true
 mkdir -p workspace
+say "Modèle léger d'abord (gemma4:e4b-it-qat, ~5 Go) : dès qu'il est là, tu peux tester"
+ollama pull gemma4:e4b-it-qat
+cat <<EOM
+
+  >>> Le modèle léger est prêt : tu peux DÉJÀ tester, dans un autre terminal :  ./jarvis.sh
+  >>> Jarvis démarre avec le modèle présent. Le modèle standard (complet) se télécharge maintenant ;
+  >>> quand c'est fini, dis « passe au modèle standard » ou relance Jarvis.
+
+EOM
+say "Modèle standard (gemma4:12b, ~8 Go) : écran, fichiers, sites, documents"
+ollama pull gemma4:12b
+if [ "$ALL" = "1" ]; then say "Modèles recherche et puissant"; ollama pull granite4.1:8b; ollama pull gemma4:26b-a4b-it-qat; fi
+
+say "6/6 Terminé"
 cat <<EOM
 
 Installation terminée.

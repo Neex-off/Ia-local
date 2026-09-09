@@ -19,12 +19,13 @@ Licence : usage libre, **paternité obligatoire**, pas de vente, valable aussi p
    cd Ia-local
    ```
 2. Double-cliquez sur **`install.bat`**. Le script installe tout seul ce qui manque : Python 3.11, Ollama,
-   PyTorch avec CUDA si vous avez une carte NVIDIA, toutes les bibliothèques, et télécharge le modèle standard.
-   Comptez 10 à 20 minutes selon la connexion (environ 12 Go).
+   PyTorch avec CUDA si vous avez une carte NVIDIA, toutes les bibliothèques, puis les modèles : **le léger d'abord**
+   (5 Go) et, dès qu'il est là, vous pouvez déjà lancer Jarvis et tester pendant que le standard (8 Go) finit de se
+   télécharger. Comptez 10 à 25 minutes selon la connexion (environ 17 Go).
 3. Double-cliquez sur **`jarvis.bat`**. Une icône ronde apparaît près de l'horloge. Dites **« Bonjour Jarvis »** :
    la page s'ouvre dans votre navigateur.
 
-Variantes : `install.bat -All` installe aussi les modèles léger, recherche et puissant (+ 28 Go) ;
+Variantes : `install.bat -All` installe aussi les modèles recherche et puissant (+ 22 Go) ;
 `install.bat -NoVoice` installe seulement le mode texte (rapide, sans PyTorch).
 
 ### macOS (Apple Silicon M1 à M4, ou Intel)
@@ -101,7 +102,8 @@ Quatre profils, installés par `install.bat -All` / `./install.sh --all`, ou un 
 | puissant | gemma4:26b-a4b-it-qat | `ollama pull gemma4:26b-a4b-it-qat` | 16 Go | tâches difficiles, plus lent |
 
 Changer à la voix : « passe au modèle recherche », ou « change de modèle » pour qu'il lise les options. Le modèle
-de démarrage est `MODEL` dans `config.py`. Tout modèle Ollama compatible outils peut être ajouté au catalogue `MODELS`.
+de démarrage est `MODEL` dans `config.py` ; s'il n'est pas encore téléchargé, Jarvis démarre avec le premier modèle
+du catalogue déjà installé (le léger d'abord) et vous le dit. Tout modèle Ollama compatible outils peut être ajouté au catalogue `MODELS`.
 
 Les modèles de voix (Whisper `large-v3-turbo` et Chatterbox multilingue, environ 4 Go) se téléchargent tout seuls
 au premier lancement.
