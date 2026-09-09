@@ -50,12 +50,13 @@ history: deque[dict] = deque(maxlen=80)   # derniers événements « importants 
 events: asyncio.Queue[dict] | None = None
 loop: asyncio.AbstractEventLoop | None = None
 core: JarvisCore | None = None
+BOOT_ID = str(int(time.time()))  # change à chaque démarrage : la page ouverte se recharge pour prendre le nouveau code
 
 
 def emit(event: dict) -> None:
     """Appelé depuis les threads du cœur : pousse l'événement vers la boucle asyncio."""
     event.setdefault("t", time.time())
-    if event["type"] in ("user", "assistant", "tool", "heard", "error", "loading", "view"):
+    if event["type"] in ("user", "assistant", "tool", "heard", "error", "loading", "view", "agenda_goto"):
         history.append(event)
         if event["type"] == "tool":
             print(f"{time.strftime('%H:%M:%S')} [outil] {event['name']}({json.dumps(event.get('args', {}), ensure_ascii=False)[:200]}) -> {str(event.get('result', ''))[:120]!r}", flush=True)
@@ -151,7 +152,7 @@ async def ws_endpoint(ws: WebSocket):
         if core.state != "loading" and not core.awake:
             core.wake()  # une page qui s'ouvre = on veut lui parler
     await ws.send_text(json.dumps({
-        "type": "hello", "name": config.ASSISTANT_NAME, "model": core.model if core else config.MODEL,
+        "type": "hello", "name": config.ASSISTANT_NAME, "model": core.model if core else config.MODEL, "boot": BOOT_ID,
         "state": core.state if core else "loading", "awake": core.awake if core else False,
         "mic": core.mic_enabled if core else True, "history": list(history),
     }, ensure_ascii=False))
@@ -186,6 +187,17 @@ async def ws_endpoint(ws: WebSocket):
                     tools.open_file(target)
             elif kind == "view":  # bouton Retour de la vue projets
                 emit({"type": "view", "view": str(msg.get("view", "home"))})
+                if msg.get("view") == "home":
+                    import tools
+                    tools._AGENDA_OPEN = False
+                    tools._AGENDA_SHOWN.clear()
+            elif kind == "agenda_month":  # boutons < > de l'agenda : le serveur suit le mois affiché
+                import tools
+                try:
+                    tools._AGENDA_SHOWN[:] = [int(msg.get("year")), int(msg.get("month"))]
+                    tools._AGENDA_OPEN = True
+                except (TypeError, ValueError):
+                    pass
     except WebSocketDisconnect:
         pass
     finally:

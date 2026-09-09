@@ -9,3 +9,4 @@ fastapi
 uvicorn[standard]
 pystray
 pillow
+pycaw; sys_platform == "win32"

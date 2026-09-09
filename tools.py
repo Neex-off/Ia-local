@@ -464,7 +464,8 @@ def open_app(name: str) -> str:
         app_name, app_id = hit
         try:
             _launch_app(app_id)
-            return f"Lancé : {app_name}"
+            time.sleep(4)  # laisse l'application s'ouvrir avant un see_screen
+            return f"Lancé : {app_name} (4 s d'attente ; si see_screen montre une autre fenêtre, focus_window('{app_name}') puis see_screen)"
         except Exception as exc:  # noqa: BLE001
             return f"Erreur au lancement de {app_name} : {exc}"
     # 2. Raccourcis (.lnk) du menu Démarrer et du bureau (Windows)
@@ -476,6 +477,205 @@ def open_app(name: str) -> str:
         return f"Lancé : {target.stem}"
     except Exception as exc:  # noqa: BLE001
         return f"Erreur au lancement de {target.name} : {exc}"
+
+
+def _resolve_app(name: str) -> tuple[str, str]:
+    """(type, cible) : ("url", adresse) / ("app", nom d'appli installée) / ("", "") si inconnu."""
+    key = _norm_app(name)
+    for alias, target in config.APP_ALIASES.items():
+        a = _norm_app(alias)
+        if key == a or key.startswith(a + " ") or key.endswith(" " + a):
+            return ("url", target) if target.startswith("http") else ("app", target)
+    if re.match(r"^(https?://|www\.)", name.strip()):
+        return ("url", name.strip() if name.startswith("http") else "https://" + name.strip())
+    hit = find_start_app(name)
+    if hit is not None:
+        return ("app", hit[0])
+    return ("", "")
+
+
+def _window_matching(name: str) -> str | None:
+    """Titre d'une fenêtre ouverte correspondant au nom (pour remettre devant au lieu de relancer)."""
+    try:
+        import computer
+
+        want = _norm_app(name)
+        for t in computer.list_windows():
+            if want and want in _norm_app(t):
+                return t
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def list_apps(query: str = "") -> str:
+    """Cherche une application installée ou un site connu par un mot-clé (ex : "discord", "photos", "mail") et renvoie les noms utilisables avec check_app / open_app.
+
+    Args:
+        query: Un mot du nom de l'application. Vide = les raccourcis connus.
+    """
+    key = _norm_app(query)
+    aliases = [f"{a} -> {t}" for a, t in config.APP_ALIASES.items() if not key or key in _norm_app(a) or key in _norm_app(t)]
+    apps = [n for n, _id in _start_apps() if not key or key in _norm_app(n)]
+    out = []
+    if aliases:
+        out.append("Raccourcis : " + "; ".join(aliases[:15]))
+    if apps:
+        out.append(f"Applications installées ({len(apps)}) : " + ", ".join(sorted(apps)[:40]))
+    return "\n".join(out) or f"Rien ne ressemble à « {query} »."
+
+
+def check_app(name: str) -> str:
+    """Va voir une application ou un site (Discord, WhatsApp, Steam, YouTube, mails, agenda…) : l'ouvre ou la remet au premier plan, attend qu'elle s'affiche, et te renvoie l'écran avec la liste de ses éléments pour que tu lises ce qu'il y a (messages, notifications, contenu). À utiliser dès que l'utilisateur veut savoir ce qu'il se passe dans une appli.
+
+    Args:
+        name: Le nom de l'application ou du site, tel que dit par l'utilisateur.
+    """
+    kind, target = _resolve_app(name)
+    if not kind:
+        return f"Je ne connais pas « {name} ». {list_apps(name)}"
+    try:
+        import computer
+
+        already = _window_matching(target if kind == "app" else name)
+        if already:
+            computer.focus_window(already)
+            time.sleep(1.5)
+            how = f"fenêtre « {already} » remise au premier plan"
+            note = computer.window_elevated_note(already)
+            if note:
+                how += f". ATTENTION : {note} Je peux la regarder mais pas cliquer dedans"
+        elif kind == "url":
+            webbrowser.open(target)
+            time.sleep(4)
+            for title in ("Chrome", "Edge", "Firefox", "Opera", "Brave"):
+                if _window_matching(title):
+                    computer.focus_window(title)
+                    break
+            how = f"site ouvert : {target}"
+        else:
+            hit = find_start_app(target)
+            if hit is None:
+                return f"Application « {target} » introuvable. {list_apps(target)}"
+            _launch_app(hit[1])
+            time.sleep(5)
+            w = _window_matching(hit[0])
+            if w:
+                computer.focus_window(w)
+                time.sleep(1)
+            how = f"application lancée : {hit[0]}"
+        path, text = computer.describe_screen(0)
+        return f"{IMAGE_MARK}{path}]]\n{how}.\n{text}\nDécris à l'utilisateur ce que tu vois d'utile (nouveaux messages, notifications, contenu à l'écran) ; si ce n'est pas la bonne fenêtre, focus_window puis see_screen."
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur en allant voir {name} : {exc}"
+
+
+def _close_app_unix(name: str, app: str, force: bool) -> str:
+    """Fermeture d'une application sous macOS (osascript) ou Linux (wmctrl / pkill), avec vérification."""
+    import subprocess as sp
+
+    app = Path(app).stem if app.endswith(".app") or "/" in app else app
+
+    def alive() -> bool:
+        return sp.run(["pgrep", "-if", app], capture_output=True).returncode == 0
+
+    if not alive():
+        return f"Aucun processus « {app} » en cours : l'application n'est pas lancée (ou porte un autre nom ; list_windows() pour voir)."
+    if force:
+        sp.run(["pkill", "-9", "-if", app], capture_output=True)
+        time.sleep(1)
+        return f"Processus arrêté de force : {app}." if not alive() else f"Impossible d'arrêter {app} (droits insuffisants ?)."
+    if IS_MAC:
+        sp.run(["osascript", "-e", f'tell application "{app}" to quit'], capture_output=True, timeout=15)
+    else:
+        if sp.run(["which", "wmctrl"], capture_output=True).returncode == 0:
+            sp.run(["wmctrl", "-c", app], capture_output=True)
+        else:
+            sp.run(["pkill", "-if", app], capture_output=True)  # SIGTERM = fermeture propre
+    time.sleep(2.5)
+    if alive():
+        return f"J'ai demandé à {app} de se fermer mais il tourne encore (une boîte de dialogue « Enregistrer ? » peut bloquer : see_screen). Dis « force » pour l'arrêter."
+    return f"Fermé : {app} (processus terminé)."
+
+
+def close_app(name: str, force: bool = False) -> str:
+    """Ferme une application par son nom : envoie la commande de fermeture à ses fenêtres (comme la croix) puis VÉRIFIE qu'elles ont disparu. Si l'appli reste en arrière-plan (Spotify, Epic Games, Discord se réduisent près de l'horloge), le dit ; force=True arrête alors complètement le processus.
+
+    Args:
+        name: Le nom de l'application, tel que dit par l'utilisateur.
+        force: True pour tuer le processus si la fermeture normale ne suffit pas (à faire seulement si l'utilisateur le demande ou l'a déjà dit).
+    """
+    try:
+        import subprocess as sp
+
+        import computer
+
+        kind, target = _resolve_app(name)
+        if not IS_WINDOWS:
+            return _close_app_unix(name, target if kind == "app" else name, force)
+        titles_to_try = [name] + ([target] if kind == "app" and target != name else [])
+        for t in titles_to_try:
+            note = computer.window_elevated_note(t)
+            if note:
+                return f"Impossible : {note}"
+        closed, pids = [], []
+        for t in titles_to_try:
+            c, p = computer.close_window(t)
+            closed += c
+            pids += p
+        pids = sorted(set(pids))
+        if not closed and not pids:
+            return f"Aucune fenêtre ouverte pour « {name} » : l'application n'est pas à l'écran (peut-être déjà fermée, ou seulement en arrière-plan). {list_windows()}"
+        time.sleep(2.5)
+        still = [w.window_text() for t in titles_to_try for w in computer.windows_matching(t)]
+        if still:
+            # 2e essai : la fenêtre devant, puis Alt+F4 (exactement comme la croix)
+            import pyautogui
+
+            for t in still:
+                computer.focus_window(t)
+                time.sleep(0.6)
+                # Sécurité : Alt+F4 seulement si c'est bien CETTE fenêtre qui est devant (sinon on fermerait autre chose)
+                if _norm_app(t) in _norm_app(computer.foreground_title()):
+                    pyautogui.hotkey("alt", "f4")
+                    time.sleep(2.5)
+            still = [w.window_text() for t in titles_to_try for w in computer.windows_matching(t)]
+        if still:
+            # 3e essai : clic sur la croix dessinée par l'application, en haut à droite de sa fenêtre
+            import pyautogui
+
+            for t in titles_to_try:
+                for w in computer.windows_matching(t):
+                    try:
+                        computer.focus_window(w.window_text())
+                        time.sleep(0.5)
+                        if _norm_app(w.window_text()) not in _norm_app(computer.foreground_title()):
+                            continue
+                        r = w.rectangle()
+                        pyautogui.moveTo(r.right - 22, r.top + 18, duration=0.2)
+                        pyautogui.click()
+                        time.sleep(2.5)
+                    except Exception:  # noqa: BLE001
+                        continue
+            still = [w.window_text() for t in titles_to_try for w in computer.windows_matching(t)]
+        alive = []
+        for pid in pids:
+            out = sp.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, creationflags=NO_WINDOW).stdout
+            if str(pid) in out:
+                alive.append(pid)
+        if still:
+            if not force:
+                return f"J'ai envoyé la fermeture à {', '.join(closed)}, mais une fenêtre est encore ouverte : {', '.join(still)} (une boîte de dialogue « Enregistrer ? » peut bloquer : see_screen). Dis « force » pour arrêter le processus."
+        if alive and force:
+            for pid in alive:
+                sp.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+            time.sleep(1)
+            return f"Processus arrêté de force : {', '.join(closed)} (pid {', '.join(map(str, alive))})."
+        if alive:
+            return f"Fenêtre fermée : {', '.join(closed)}. L'application tourne encore en arrière-plan (icône près de l'horloge) ; si tu veux l'arrêter complètement, dis-le et j'utiliserai force=True."
+        return f"Fermé : {', '.join(closed)} (fenêtre disparue, processus terminé)."
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur en fermant {name} : {exc}"
 
 
 def open_site(name: str) -> str:
@@ -496,6 +696,7 @@ def open_site(name: str) -> str:
         pick = next((r for r in results if not any(s in r.get("href", "") for s in skip)), results[0])
         url = pick.get("href", "")
         webbrowser.open(url)
+        time.sleep(3.5)
         others = "; ".join(f"{r.get('title', '')[:40]} ({r.get('href', '')})" for r in results[:3] if r is not pick)
         return f"Ouvert : {pick.get('title', '')} -> {url}\nAutres résultats : {others}"
     except Exception as exc:  # noqa: BLE001
@@ -512,7 +713,8 @@ def open_url(url: str) -> str:
         url = "https://" + url
     try:
         webbrowser.open(url)
-        return f"Ouvert dans le navigateur : {url}"
+        time.sleep(3.5)  # laisse le navigateur passer au premier plan et charger avant un see_screen
+        return f"Ouvert dans le navigateur : {url} (la page a eu 3 s pour charger ; si see_screen montre une autre fenêtre, focus_window sur le navigateur puis see_screen)"
     except Exception as exc:  # noqa: BLE001
         return f"Erreur : {exc}"
 
@@ -545,12 +747,76 @@ def recall(query: str = "") -> str:
 
     facts = memory.search(query, limit=15) if query.strip() else memory.all_facts()
     lines = [f"Faits mémorisés ({len(facts)}) :"] + [f"  n°{f['id']} [{f['categorie']}] {f['texte']} ({f['date'][:10]})" for f in facts]
+    know = memory.knowledge_search(query, limit=5) if query.strip() else memory.all_knowledge()[-10:]
+    if know:
+        lines.append(f"Connaissances apprises ({len(know)}) :")
+        lines += [f"  n°{k['id']} {k['sujet']} ({k['date'][:10]}) : {k['resume'][:400]}" + (f" [sources : {k['sources'][:120]}]" if k['sources'] else "") for k in know]
     if query.strip():
         convs = memory.search_conversations(query, limit=6)
         if convs:
             lines.append("Extraits d'anciennes conversations :")
             lines += [f"  {m['date'][:16]} {m['role']} : {m['text'][:160]}" for m in convs]
     return "\n".join(lines) if len(lines) > 1 else "Je n'ai encore rien mémorisé à ce sujet."
+
+
+def research(topic: str, max_pages: int = 3) -> str:
+    """Se renseigner sur un sujet : cherche sur le web, lit les meilleures pages et te renvoie la matière à résumer. À utiliser pour apprendre quelque chose de nouveau, puis enregistre l'essentiel avec learn. Nécessite internet.
+
+    Args:
+        topic: Le sujet ou la question, par exemple "règles du padel" ou "nouveautés Flutter 4".
+        max_pages: Nombre de pages à lire (1 à 5).
+    """
+    if not _online():
+        return OFFLINE_MSG
+    try:
+        from bs4 import BeautifulSoup
+        from ddgs import DDGS
+
+        results = DDGS().text(topic, max_results=8) or []
+        if not results:
+            return f"Aucun résultat web pour « {topic} »."
+        out = [f"Recherche « {topic} » : {len(results)} résultats.", ""]
+        read = 0
+        for r in results:
+            url = r.get("href", "")
+            if read >= max(1, min(int(max_pages), 5)):
+                break
+            if not url.startswith("http") or url.lower().endswith((".pdf", ".zip")) or "youtube.com" in url:
+                continue
+            try:
+                resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (agent local)"})
+                resp.raise_for_status()
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "aside"]):
+                    tag.decompose()
+                text = "\n".join(line.strip() for line in soup.get_text("\n").splitlines() if len(line.strip()) > 40)
+                if len(text) < 300:
+                    continue
+                out.append(f"=== Source {read + 1} : {r.get('title', '')} — {url}\n{text[:2500]}\n")
+                read += 1
+            except Exception:  # noqa: BLE001
+                continue
+        if read == 0:
+            out.append("Pages illisibles ; extraits des résultats :")
+            out += [f"- {r.get('title', '')} : {r.get('body', '')} ({r.get('href', '')})" for r in results[:5]]
+        out.append("Maintenant : résume en 3 à 8 phrases ce que tu as appris, puis enregistre-le avec learn(sujet, résumé, sources).")
+        return _truncate("\n".join(out), 9000)
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur de recherche : {exc}"
+
+
+def learn(topic: str, summary: str, sources: str = "") -> str:
+    """Enregistre durablement une connaissance apprise (après research, ou donnée par l'utilisateur) dans ton carnet de connaissances.
+
+    Args:
+        topic: Le sujet, court, par exemple "Règles du padel".
+        summary: Ce que tu as compris, en 3 à 8 phrases claires et factuelles.
+        sources: Les adresses des pages utilisées, séparées par des espaces (facultatif).
+    """
+    import memory
+
+    it = memory.learn(topic, summary, sources)
+    return f"Appris et mémorisé (n°{it['id']}) : {it['sujet']}. Tu pourras le retrouver avec recall."
 
 
 def forget(fact_id: int) -> str:
@@ -592,6 +858,142 @@ def hide_projects() -> str:
     if UI_EMIT is not None:
         UI_EMIT({"type": "view", "view": "home"})
     return "Vue projets fermée."
+
+
+# --------------------------------------------------------------------------
+# Agenda
+# --------------------------------------------------------------------------
+
+
+def _agenda_refresh() -> None:
+    if UI_EMIT is not None:
+        import agenda
+
+        UI_EMIT({"type": "agenda", **agenda.view_payload()})
+
+
+def show_agenda() -> str:
+    """Affiche l'agenda à l'écran (calendrier du mois avec les rendez-vous, et les prochains rendez-vous) et te renvoie les 14 prochains jours. À appeler pour « montre l'agenda », « ouvre le calendrier »."""
+    import agenda
+
+    global _AGENDA_OPEN
+    from datetime import date
+
+    if UI_EMIT is not None:
+        UI_EMIT({"type": "view", "view": "agenda", **agenda.view_payload()})
+    _AGENDA_OPEN = True
+    _AGENDA_SHOWN[:] = [date.today().year, date.today().month]
+    ups = agenda.upcoming(14)
+    body = "\n".join(agenda.fmt(e) for e in ups) if ups else "Rien de prévu dans les 14 prochains jours."
+    return f"Aujourd'hui : {agenda.today_line()}.\n{body}\n(Agenda affiché à l'écran.)"
+
+
+def agenda_month(month: str = "", year: int = 0) -> str:
+    """Change le mois affiché dans l'agenda à l'écran et te renvoie les rendez-vous de ce mois. month : « suivant », « précédent », un nom (« octobre ») ou un numéro 1-12 ; year facultatif. À appeler pour « mois suivant », « montre octobre », « reviens à ce mois-ci » (month="actuel")."""
+    import calendar
+    from datetime import date
+
+    import agenda
+
+    cur = _AGENDA_SHOWN or [date.today().year, date.today().month]
+    y, m = cur
+    q = agenda._norm(str(month))
+    if q in ("suivant", "prochain", "apres", "next", "+1"):
+        m += 1
+    elif q in ("precedent", "avant", "dernier", "prev", "-1"):
+        m -= 1
+    elif q in ("", "actuel", "courant", "ce mois", "ce mois-ci", "aujourd'hui", "aujourdhui"):
+        y, m = date.today().year, date.today().month
+    elif q.isdigit():
+        m = int(q)
+    else:
+        names = [agenda._norm(n) for n in agenda.MOIS]
+        hits = [i for i, n in enumerate(names) if n.startswith(q[:3])]
+        if not hits:
+            return f"Mois non compris : {month!r} (attendu « suivant », « précédent », un nom de mois ou 1-12)."
+        m = hits[0] + 1
+        if not year and (y, m) < (date.today().year, date.today().month):
+            y += 1  # un mois déjà passé cette année -> l'an prochain
+    if year:
+        y = int(year)
+    while m > 12:
+        m -= 12
+        y += 1
+    while m < 1:
+        m += 12
+        y -= 1
+    _AGENDA_SHOWN[:] = [y, m]
+    if UI_EMIT is not None:
+        if not _AGENDA_OPEN:
+            UI_EMIT({"type": "view", "view": "agenda", **agenda.view_payload()})
+        UI_EMIT({"type": "agenda_goto", "year": y, "month": m - 1})
+    start = date(y, m, 1)
+    evs = agenda.between(start, date(y, m, calendar.monthrange(y, m)[1]))
+    body = "\n".join(agenda.fmt(e) for e in evs) if evs else "Rien de prévu ce mois-là."
+    return f"Agenda affiché sur {agenda.MOIS[m - 1]} {y}.\n{body}"
+
+
+_AGENDA_SHOWN: list[int] = []  # [année, mois] affichés dans l'interface
+_AGENDA_OPEN = False
+
+
+def hide_agenda() -> str:
+    """Referme l'agenda et remet l'interface normale (« ferme l'agenda », « retour »)."""
+    global _AGENDA_OPEN
+    if UI_EMIT is not None:
+        UI_EMIT({"type": "view", "view": "home"})
+    _AGENDA_OPEN = False
+    _AGENDA_SHOWN.clear()
+    return "Agenda fermé."
+
+
+def add_event(title: str, date: str, time: str = "", note: str = "") -> str:
+    """Ajoute un rendez-vous ou un rappel dans l'agenda. Calcule d'abord la date exacte à partir d'aujourd'hui (donné dans le message) : « jeudi » = le prochain jeudi, « demain » = aujourd'hui + 1.
+
+    Args:
+        title: L'intitulé, par exemple "Dentiste" ou "Appeler Marc".
+        date: La date au format AAAA-MM-JJ (ou JJ/MM/AAAA).
+        time: L'heure au format HH:MM (vide si toute la journée).
+        note: Détail facultatif (lieu, personne…).
+    """
+    import agenda
+
+    try:
+        ev = agenda.add(title, date, time, note)
+    except ValueError as exc:
+        return f"Erreur : {exc}"
+    _agenda_refresh()
+    return f"Ajouté : {agenda.fmt(ev)}"
+
+
+def remove_event(query: str) -> str:
+    """Supprime un rendez-vous par son numéro, ou tous ceux dont le titre contient le texte donné.
+
+    Args:
+        query: Le numéro (ex. "3") ou un mot du titre (ex. "dentiste").
+    """
+    import agenda
+
+    gone = agenda.remove(query)
+    if not gone:
+        return f"Aucun rendez-vous ne correspond à « {query} »."
+    _agenda_refresh()
+    return "Supprimé : " + " ; ".join(agenda.fmt(e) for e in gone)
+
+
+def list_events(days: int = 7) -> str:
+    """Liste les rendez-vous à venir (« qu'est-ce que j'ai cette semaine ? », « mon programme demain »).
+
+    Args:
+        days: Nombre de jours à partir d'aujourd'hui (1 = aujourd'hui seulement, 7 = la semaine, 30 = le mois).
+    """
+    import agenda
+    from datetime import date as _date, timedelta
+
+    today = _date.today()
+    evs = agenda.between(today, today + timedelta(days=max(0, int(days) - 1)))
+    head = f"Aujourd'hui : {agenda.today_line()}."
+    return head + ("\n" + "\n".join(agenda.fmt(e) for e in evs) if evs else f"\nRien de prévu sur {days} jour(s).")
 
 
 # --------------------------------------------------------------------------
@@ -845,16 +1247,22 @@ def create_docx(path: str, title: str, content: str) -> str:
 IMAGE_MARK = "[[image:"
 
 
-def see_screen(monitor: int = 0) -> str:
-    """Regarde l'écran : capture d'écran (avec grille de coordonnées) et liste des boutons, champs et liens de la fenêtre active.
+def see_screen(monitor: int = 0, window: str = "") -> str:
+    """Regarde l'écran : capture d'écran (avec grille de coordonnées) et liste des boutons, champs et liens de la fenêtre active. Donne `window` pour remettre d'abord une fenêtre au premier plan (sinon elle peut être cachée derrière une autre).
 
     Args:
         monitor: 0 = l'écran où se trouve la fenêtre active (par défaut), 1 = écran principal, 2 = second écran.
+        window: Optionnel : un morceau du titre de la fenêtre à mettre devant avant de regarder (ex. "Epic Games", "Chrome").
     """
     try:
         import computer
 
+        note = ""
+        if window and window.strip():
+            note = computer.focus_window(window.strip()) + "\n"
+            time.sleep(0.8)
         path, text = computer.describe_screen(int(monitor))
+        text = note + text
         return f"{IMAGE_MARK}{path}]]\n{text}"
     except Exception as exc:  # noqa: BLE001
         return f"Erreur de capture : {exc}"
@@ -958,6 +1366,64 @@ def change_volume(action: str, steps: int = 5) -> str:
         return f"Erreur volume : {exc}"
 
 
+def _audio_sessions():
+    if not IS_WINDOWS:
+        raise RuntimeError("le volume par application n'existe que sous Windows (mélangeur) ; utilise change_volume pour le volume général")
+    from pycaw.pycaw import AudioUtilities
+
+    out = []
+    for s in AudioUtilities.GetAllSessions():
+        if s.Process:
+            out.append((s.Process.name(), s))
+    return out
+
+
+def list_audio_apps() -> str:
+    """Liste les applications qui ont un canal audio ouvert (mélangeur Windows) avec leur volume et si elles sont coupées."""
+    try:
+        seen = {}
+        for name, s in _audio_sessions():
+            v = round(s.SimpleAudioVolume.GetMasterVolume() * 100)
+            seen[name] = f"{name} : {v} %" + (" (muet)" if s.SimpleAudioVolume.GetMute() else "")
+        return "\n".join(seen.values()) if seen else "Aucune application ne joue de son actuellement."
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur mélangeur : {exc}"
+
+
+def app_volume(app: str, action: str = "set", level: int = 50) -> str:
+    """Règle le volume d'UNE application précise (Spotify, Discord, Chrome, un jeu…) dans le mélangeur Windows, sans toucher aux autres.
+
+    Args:
+        app: Nom de l'application (ex. "spotify", "discord", "chrome").
+        action: "set" (mettre à level %), "up" (+10 %), "down" (-10 %), "mute" (couper), "unmute" (rétablir).
+        level: Pourcentage 0 à 100, utilisé avec "set".
+    """
+    try:
+        key = _norm_app(app).replace(" ", "")
+        hits = [(n, s) for n, s in _audio_sessions() if key in _norm_app(n).replace(" ", "").replace(".exe", "")]
+        if not hits:
+            return f"Aucune application audio ne ressemble à « {app} ». " + list_audio_apps()
+        action = (action or "set").strip().lower()
+        results = []
+        for name, s in hits:
+            vol = s.SimpleAudioVolume
+            cur = vol.GetMasterVolume()
+            if action in ("mute", "couper", "muet"):
+                vol.SetMute(1, None); results.append(f"{name} : son coupé")
+            elif action in ("unmute", "retablir", "rétablir"):
+                vol.SetMute(0, None); results.append(f"{name} : son rétabli")
+            elif action in ("up", "monter", "plus"):
+                new = min(1.0, cur + 0.10); vol.SetMasterVolume(new, None); results.append(f"{name} : {round(new*100)} %")
+            elif action in ("down", "baisser", "moins"):
+                new = max(0.0, cur - 0.10); vol.SetMasterVolume(new, None); results.append(f"{name} : {round(new*100)} %")
+            else:
+                new = max(0, min(100, int(level))) / 100; vol.SetMasterVolume(new, None); vol.SetMute(0, None)
+                results.append(f"{name} : {round(new*100)} %")
+        return "Volume réglé : " + " ; ".join(dict.fromkeys(results))
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur volume d'application : {exc}"
+
+
 def media_control(action: str) -> str:
     """Contrôle le lecteur multimédia en cours (Spotify, YouTube, VLC…) : lecture/pause, piste suivante, précédente, stop.
 
@@ -976,6 +1442,65 @@ def media_control(action: str) -> str:
         return f"Commande multimédia envoyée : {key}"
     except Exception as exc:  # noqa: BLE001
         return f"Erreur multimédia : {exc}"
+
+
+def move_mouse(x: int, y: int) -> str:
+    """Déplace la souris à des coordonnées écran sans cliquer (survol, menus qui s'ouvrent au passage, viser avant un clic).
+
+    Args:
+        x: Position horizontale en pixels.
+        y: Position verticale en pixels.
+    """
+    try:
+        import computer
+
+        return computer.move(x, y)
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur souris : {exc}"
+
+
+def drag(x1: int, y1: int, x2: int, y2: int) -> str:
+    """Glisser-déposer à la souris : déplacer un fichier, une fenêtre, un curseur de réglage, sélectionner du texte.
+
+    Args:
+        x1: Départ horizontal.
+        y1: Départ vertical.
+        x2: Arrivée horizontale.
+        y2: Arrivée verticale.
+    """
+    try:
+        import computer
+
+        return computer.drag(x1, y1, x2, y2)
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur de glisser-déposer : {exc}"
+
+
+def zoom_screen(x: int, y: int) -> str:
+    """Loupe : image en pleine résolution d'une zone de 600x400 px autour d'un point, avec une grille fine, pour lire un petit texte ou viser un petit bouton avant click(x, y).
+
+    Args:
+        x: Centre horizontal de la zone (coordonnées écran).
+        y: Centre vertical de la zone.
+    """
+    try:
+        import computer
+
+        path, text = computer.zoom(int(x), int(y))
+        return f"{IMAGE_MARK}{path}]]\n{text}"
+    except Exception as exc:  # noqa: BLE001
+        return f"Erreur de loupe : {exc}"
+
+
+def wait(seconds: float = 2) -> str:
+    """Attend quelques secondes (page qui charge, application qui s'ouvre, animation) avant de regarder à nouveau l'écran.
+
+    Args:
+        seconds: Durée en secondes (0.5 à 15).
+    """
+    s = max(0.5, min(15.0, float(seconds)))
+    time.sleep(s)
+    return f"Attendu {s:g} s."
 
 
 def list_windows() -> str:
@@ -1004,12 +1529,14 @@ def focus_window(title: str) -> str:
 
 
 # Liste passée au modèle. L'ordre n'a pas d'importance.
-TOOLS = [get_datetime, calculate, remember, recall, forget, show_projects, hide_projects,
+TOOLS = [get_datetime, calculate, remember, recall, forget, research, learn, show_projects, hide_projects,
+         show_agenda, hide_agenda, agenda_month, add_event, remove_event, list_events,
          list_models, switch_model, list_skills, use_skill,
          search_files, open_file, list_files, read_file, write_file, create_pdf, create_docx,
-         open_app, open_site, open_url, run_command, web_search, fetch_url,
-         see_screen, click, click_element, type_text, press_keys, scroll, list_windows, focus_window,
-         change_volume, media_control]
+         check_app, list_apps, open_app, close_app, open_site, open_url, run_command, web_search, fetch_url,
+         see_screen, zoom_screen, click, click_element, move_mouse, drag, type_text, press_keys, scroll, wait,
+         list_windows, focus_window,
+         change_volume, media_control, app_volume, list_audio_apps]
 TOOL_MAP = {fn.__name__: fn for fn in TOOLS}
 
 

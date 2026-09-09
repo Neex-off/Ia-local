@@ -96,6 +96,67 @@ def prompt_section(limit: int = 40) -> str:
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------- connaissances apprises
+
+KNOWLEDGE = DIR / "connaissances.json"
+
+
+def _load_knowledge() -> list[dict]:
+    if not KNOWLEDGE.is_file():
+        return []
+    try:
+        return json.loads(KNOWLEDGE.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def learn(topic: str, summary: str, sources: str = "") -> dict:
+    """Enregistre (ou met à jour) une connaissance apprise, par exemple après une recherche web."""
+    topic = " ".join(topic.split()).strip()
+    with _lock:
+        items = _load_knowledge()
+        for it in items:
+            if _norm(it["sujet"]) == _norm(topic):
+                it.update({"resume": summary.strip(), "sources": sources.strip(),
+                           "date": datetime.now().isoformat(timespec="seconds")})
+                DIR.mkdir(parents=True, exist_ok=True)
+                KNOWLEDGE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+                return it
+        it = {"id": (max((i["id"] for i in items), default=0) + 1), "sujet": topic, "resume": summary.strip(),
+              "sources": sources.strip(), "date": datetime.now().isoformat(timespec="seconds")}
+        items.append(it)
+        DIR.mkdir(parents=True, exist_ok=True)
+        KNOWLEDGE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        return it
+
+
+def all_knowledge() -> list[dict]:
+    with _lock:
+        return _load_knowledge()
+
+
+def knowledge_search(query: str, limit: int = 5) -> list[dict]:
+    words = [w for w in re.split(r"\W+", _norm(query)) if len(w) > 2]
+    scored = []
+    for it in all_knowledge():
+        hay = _norm(it["sujet"] + " " + it["resume"])
+        hits = sum(1 for w in words if w in hay) + (3 if any(w in _norm(it["sujet"]) for w in words) else 0)
+        if hits:
+            scored.append((hits, it))
+    scored.sort(key=lambda x: -x[0])
+    return [it for _, it in scored[:limit]]
+
+
+def knowledge_prompt_section(limit: int = 30) -> str:
+    items = all_knowledge()
+    if not items:
+        return ""
+    lines = ["CE QUE TU AS APPRIS PAR TOI-MÊME (carnet de connaissances ; détails avec recall) :"]
+    for it in items[-limit:]:
+        lines.append(f"- {it['sujet']} ({it['date'][:10]}) : {it['resume'][:140]}")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- journal
 
 def log_message(role: str, text: str) -> None:

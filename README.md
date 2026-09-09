@@ -51,9 +51,11 @@ avec le script officiel. Avec une carte NVIDIA, installez les pilotes avant (`nv
 
 Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --no-voice` (mode texte seulement).
 
-> **État des tests** : Windows 11 avec RTX 5080, testé de bout en bout. Les scripts macOS et Linux sont vérifiés
-> syntaxiquement mais n'ont pas encore été exécutés sur une vraie machine : en cas de problème, ouvrez une issue
-> avec la sortie du script.
+> **État des tests** : Windows 11 avec RTX 5080, testé de bout en bout. macOS et Linux : scripts vérifiés
+> syntaxiquement, code importé et outils exercés en simulant ces systèmes, mais pas encore lancé sur une vraie
+> machine. Le volume par application et le mode administrateur n'existent que sous Windows ; ailleurs, la
+> fermeture des applis passe par macOS (osascript) ou wmctrl/pkill. En cas de problème, ouvrez une issue avec la
+> sortie du script.
 
 ---
 
@@ -72,6 +74,10 @@ Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --
 | « Retiens que je préfère le café » | mémorise, pour toujours |
 | « Montre-moi les projets » | affiche vos projets, branches, dépôts GitHub |
 | « Passe au modèle léger » | change de modèle, conversation conservée |
+| « Montre l'agenda », « ajoute dentiste jeudi à 15 h », « mois suivant » | calendrier à l'écran ; il vous prévient tout seul 30 puis 5 minutes avant |
+| « Lis mes mails non lus » | ouvre votre messagerie, regarde l'écran et vous lit les nouveaux messages |
+| « Baisse le son de Spotify » | règle le volume de cette application seulement (Windows) |
+| « Ferme Discord » | ferme l'application et vérifie qu'elle l'est vraiment |
 | « Merci Jarvis » | se rendort |
 
 - **Le couper** : parlez pendant qu'il parle, ou dites « stop », ou la touche Échap.
@@ -79,6 +85,7 @@ Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --
 - **Veille** : fermez la page, il se met en veille, puis en veille profonde une minute plus tard (carte graphique
   libérée). « Bonjour Jarvis » le rappelle, page comprise.
 - **Arrêter** : icône près de l'horloge → Quitter, ou `jarvis-arreter.bat` / `./jarvis-arreter.sh`.
+- **Applis en administrateur** (Windows) : `jarvis-admin.bat` lance Jarvis avec les droits admin pour pouvoir les piloter.
 
 ---
 
@@ -127,11 +134,13 @@ Tout est dans **`config.py`**, commenté ligne par ligne :
 | `VOCAB_HINTS` | vos noms propres, pour la reconnaissance vocale |
 | `BARGE_IN_SENSITIVITY` | à monter si vous utilisez des enceintes |
 | `STANDBY_AFTER_SECONDS` | délai avant la veille profonde |
+| `REMINDER_MINUTES`, `MORNING_BRIEF_HOUR` | rappels parlés avant un rendez-vous, heure du programme du jour |
 | `PROJECT_DIRS`, `GITHUB_USER`, `GITHUB_TOKEN` | vue projets et dépôts GitHub |
 | `AUTO_APPROVE_COMMANDS`, `FULL_DISK_ACCESS` | ce qu'il a le droit de faire |
 
 **Compétences** : un dossier `skills/<nom>/SKILL.md` = une instruction d'expert qu'il charge à la demande.
 Les `SKILL.md` de Claude Code présents sur la machine sont reconnus automatiquement.
+Les compétences tierces (Anthropic, communauté) ne sont pas incluses dans ce dépôt : copiez les vôtres dans `skills/externes/`.
 
 ---
 
@@ -145,6 +154,8 @@ Les `SKILL.md` de Claude Code présents sur la machine sont reconnus automatique
 | Réponses très lentes | carte graphique saturée : fermez les jeux, ou passez au modèle léger |
 | Page vide ou « erreur réseau » | Jarvis n'est pas lancé, ou le port 8765 est pris (`UI_PORT`) |
 | Erreur CUDA au chargement d'un modèle | Ollama se répare seul en quelques secondes ; sinon redémarrez Jarvis |
+| « Cette application tourne en administrateur » | Windows bloque les clics vers une appli lancée en admin (Epic Games…) : lancez Jarvis avec `jarvis-admin.bat`, ou l'appli sans droits admin |
+| Le calendrier ne suit pas la voix | la page se recharge seule à chaque redémarrage de Jarvis ; sinon F5 |
 | Voir ce qui se passe | `jarvis.log` dans le dossier, ou `jarvis-console` pour les messages en direct |
 
 ---
@@ -158,6 +169,7 @@ voice.py          Whisper + Chatterbox           tools.py          les outils du
 computer.py       écran, souris, clavier         file_index.py     index SQLite des fichiers
 memory.py         mémoire durable                projets.py        projets locaux et GitHub
 skills.py         compétences (SKILL.md)         skills/           compétences maison
+agenda.py         rendez-vous et rappels         memoire/          faits, connaissances, agenda (jamais publiés)
 ```
 
 ## 8. Sécurité et responsabilité

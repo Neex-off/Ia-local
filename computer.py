@@ -193,6 +193,50 @@ def click(x: int, y: int, button: str = "left", double: bool = False) -> str:
     return f"{'Double-clic' if double else 'Clic'} {button} en ({x}, {y})"
 
 
+def move(x: int, y: int) -> str:
+    pag = _pag()
+    pag.moveTo(int(x), int(y), duration=0.2)
+    return f"Souris en ({int(x)}, {int(y)})"
+
+
+def drag(x1: int, y1: int, x2: int, y2: int, duration: float = 0.6) -> str:
+    pag = _pag()
+    pag.moveTo(int(x1), int(y1), duration=0.15)
+    pag.mouseDown()
+    pag.moveTo(int(x2), int(y2), duration=max(0.2, float(duration)))
+    pag.mouseUp()
+    return f"Glissé de ({int(x1)}, {int(y1)}) à ({int(x2)}, {int(y2)})"
+
+
+ZOOM_PATH = config.WORKSPACE / "zoom.png"
+
+
+def zoom(x: int, y: int, width: int = 600, height: int = 400) -> tuple[Path, str]:
+    """Capture en pleine résolution d'une zone centrée sur (x, y), avec une grille fine, pour viser précisément."""
+    import mss
+    from PIL import Image, ImageDraw
+
+    with mss.MSS() as s:
+        mons = s.monitors
+        mon = mons[_monitor_of_foreground(mons)] if len(mons) > 1 else mons[0]
+        left = max(mon["left"], int(x) - width // 2)
+        top = max(mon["top"], int(y) - height // 2)
+        left = min(left, mon["left"] + mon["width"] - width)
+        top = min(top, mon["top"] + mon["height"] - height)
+        shot = s.grab({"left": left, "top": top, "width": width, "height": height})
+        img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+    draw = ImageDraw.Draw(img)
+    step = 50
+    for gx in range((step - (left % step)) % step, width, step):
+        draw.line([(gx, 0), (gx, height)], fill=(255, 0, 0), width=1)
+        draw.text((gx + 2, 2), str(left + gx), fill=(255, 40, 40))
+    for gy in range((step - (top % step)) % step, height, step):
+        draw.line([(0, gy), (width, gy)], fill=(255, 0, 0), width=1)
+        draw.text((2, gy + 2), str(top + gy), fill=(255, 40, 40))
+    img.save(ZOOM_PATH)
+    return ZOOM_PATH, f"Loupe : zone écran de ({left}, {top}) à ({left + width}, {top + height}), grille rouge tous les 50 px en coordonnées écran réelles."
+
+
 def find_element(name: str) -> dict | None:
     want = _norm(name)
     if not want:
@@ -313,6 +357,109 @@ def list_windows() -> list[str]:
     return titles
 
 
+def _force_foreground(hwnd: int) -> None:
+    """Windows refuse souvent SetForegroundWindow : on simule une touche ALT puis on restaure la fenêtre."""
+    u = ctypes.windll.user32
+    u.keybd_event(0x12, 0, 0, 0)       # ALT enfoncé
+    u.keybd_event(0x12, 0, 2, 0)       # ALT relâché
+    u.ShowWindow(hwnd, 9)              # SW_RESTORE (si minimisée)
+    u.SetForegroundWindow(hwnd)
+    u.BringWindowToTop(hwnd)
+
+
+def is_elevated(pid: int) -> bool | None:
+    """Vrai si le processus tourne en administrateur (Windows). None si indéterminable."""
+    if not IS_WINDOWS:
+        return False
+    try:
+        import ctypes.wintypes as wt
+
+        k, a = ctypes.windll.kernel32, ctypes.windll.advapi32
+        h = k.OpenProcess(0x1000, False, int(pid))
+        if not h:
+            return None
+        tok = wt.HANDLE()
+        if not a.OpenProcessToken(h, 0x0008, ctypes.byref(tok)):
+            return None
+        elev, ret = wt.DWORD(), wt.DWORD()
+        a.GetTokenInformation(tok, 20, ctypes.byref(elev), ctypes.sizeof(elev), ctypes.byref(ret))
+        return bool(elev.value)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def i_am_elevated() -> bool:
+    if not IS_WINDOWS:
+        return True
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:  # noqa: BLE001
+        return False
+
+
+ELEVATED_MSG = ("cette application tourne en ADMINISTRATEUR et Jarvis non : Windows bloque mes clics, mes touches et mes "
+                "ordres de fermeture vers elle. Pour la piloter, relance Jarvis avec jarvis-admin.bat, ou lance l'application sans droits administrateur.")
+
+
+def window_elevated_note(title: str) -> str:
+    """Message à renvoyer au modèle si la fenêtre visée est élevée alors que Jarvis ne l'est pas ; sinon chaîne vide."""
+    if i_am_elevated():
+        return ""
+    for w in windows_matching(title):
+        try:
+            if is_elevated(w.process_id()):
+                return f"« {w.window_text()} » : {ELEVATED_MSG}"
+        except Exception:  # noqa: BLE001
+            continue
+    return ""
+
+
+def foreground_title() -> str:
+    """Titre de la fenêtre actuellement au premier plan (Windows)."""
+    if not IS_WINDOWS:
+        return ""
+    try:
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        length = ctypes.windll.user32.GetWindowTextLengthW(hwnd)
+        buf = ctypes.create_unicode_buffer(length + 1)
+        ctypes.windll.user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def windows_matching(title: str) -> list:
+    """Fenêtres visibles dont le titre contient `title` (objets pywinauto, Windows)."""
+    if not IS_WINDOWS:
+        return []
+    from pywinauto import Desktop
+
+    want = _norm(title)
+    out = []
+    for w in Desktop(backend="win32").windows():
+        try:
+            t = w.window_text()
+            if t and want and want in _norm(t) and w.is_visible():
+                out.append(w)
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def close_window(title: str) -> tuple[list[str], list[int]]:
+    """Ferme proprement (WM_CLOSE, comme la croix) toutes les fenêtres dont le titre contient `title`.
+    Renvoie (titres fermés, pids concernés)."""
+    closed, pids = [], []
+    for w in windows_matching(title):
+        try:
+            pids.append(w.process_id())
+            closed.append(w.window_text())
+            w.close()
+        except Exception:  # noqa: BLE001
+            continue
+    return closed, sorted(set(pids))
+
+
 def focus_window(title: str) -> str:
     if not IS_WINDOWS:
         try:
@@ -326,15 +473,22 @@ def focus_window(title: str) -> str:
         return f"Aucune fenêtre dont le titre contient « {title} » (ou fonction indisponible sur ce système)."
     from pywinauto import Desktop
 
-    want = _norm(title)
-    for w in Desktop(backend="win32").windows():
+    for w in windows_matching(title):
         try:
             t = w.window_text()
-            if t and want in _norm(t) and w.is_visible():
-                if w.is_minimized():
-                    w.restore()
+            hwnd = w.handle
+            if w.is_minimized():
+                w.restore()
+            try:
                 w.set_focus()
-                return f"Fenêtre au premier plan : « {t} »"
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(0.3)
+            if ctypes.windll.user32.GetForegroundWindow() != hwnd:
+                _force_foreground(hwnd)
+                time.sleep(0.4)
+            ok = ctypes.windll.user32.GetForegroundWindow() == hwnd
+            return f"Fenêtre au premier plan : « {t} »" if ok else f"Fenêtre « {t} » trouvée mais Windows refuse de la mettre devant ; essaie press_keys(\"alt+tab\") ou clique dessus dans la barre des tâches."
         except Exception:  # noqa: BLE001
             continue
-    return f"Aucune fenêtre dont le titre contient « {title} »."
+    return f"Aucune fenêtre ouverte dont le titre contient « {title} »."

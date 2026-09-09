@@ -129,6 +129,39 @@
   .proj .br span.more { color: var(--muted); border-style: dashed; }
   .proj .lk { margin-top: 8px; font-size: 11px; color: var(--amber); }
   @keyframes projin { to { opacity: 1; transform: none; } }
+
+  /* ---- Vue agenda : même disposition que les projets ---- */
+  body.view-agenda #scene { transform: translate(-1vw, -1vh) scale(0.5); }
+  body.view-agenda #tools, body.view-agenda #stats { opacity: 0; pointer-events: none; transform: translateY(14px); }
+  body.view-agenda #log { left: 24px; top: 92px; bottom: auto; width: calc(35vw - 24px); max-height: 32vh; }
+  body.view-agenda #input { left: auto; right: 24px; transform: none; width: calc(62vw - 24px); }
+  #agenda { position: fixed; top: 92px; right: 24px; bottom: 100px; left: 38vw; display: none; overflow: auto; }
+  body.view-agenda #agenda { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-content: start; }
+  #agenda .head { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 18px; margin: 0 0 4px 4px; }
+  #agenda h1 { margin: 0; font-size: 22px; letter-spacing: 6px; font-weight: 300; color: #fff; text-shadow: 0 0 18px var(--cyan-dim); }
+  #agenda .month { color: var(--cyan); font-size: 13px; letter-spacing: 3px; text-transform: uppercase; min-width: 190px; }
+  #agenda .head button { padding: 5px 10px; }
+  #agenda .back { margin-left: auto; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .cal .dow { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); text-align: center; padding: 4px 0 6px; }
+  .day { min-height: 92px; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    opacity: 0; transform: translateY(10px); animation: projin var(--std) var(--ease) forwards; }
+  .day.other { animation-name: dayin; }
+  @keyframes dayin { to { opacity: 0.35; transform: none; } }
+  .day .n { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .day.today { border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan-dim); }
+  .day.today .n { color: var(--cyan); font-weight: 600; }
+  .evt { margin-top: 5px; padding: 3px 7px; font-size: 11px; line-height: 1.3; border-radius: 4px; background: rgba(79,216,255,0.12);
+    border-left: 2px solid var(--cyan); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .evt b { color: var(--cyan); font-weight: 500; margin-right: 4px; font-variant-numeric: tabular-nums; }
+  .upcoming { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; align-self: start; }
+  .upcoming h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); }
+  .up { padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .up:first-of-type { border-top: 0; }
+  .up .w { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+  .up .t { color: #fff; }
+  .up .no { font-size: 11px; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 12px; }
   @media (prefers-reduced-motion: reduce) { .hud, .msg, .tool, .proj { transition: none; animation: none; opacity: 1; transform: none; } }
 </style>
 </head>
@@ -149,6 +182,11 @@
 <div id="projects">
   <div class="head"><h1>PROJETS</h1><span class="count" id="pcount"></span><button class="back" id="pback">Retour</button></div>
   <div class="pgrid" id="pgrid"></div>
+</div>
+<div id="agenda">
+  <div class="head"><h1>AGENDA</h1><button id="aprev" title="Mois précédent">‹</button><span class="month" id="amonth"></span><button id="anext" title="Mois suivant">›</button><button class="back" id="aback">Retour</button></div>
+  <div class="cal" id="acal"></div>
+  <div class="upcoming"><h2>À venir</h2><div id="aup"></div></div>
 </div>
 <div class="hud" id="log"><h2>Conversation</h2><div id="msgs"></div></div>
 <div class="hud" id="tools"><h2>Outils</h2><div id="toollist"><div style="font-size:12px;color:var(--muted)">Aucun outil utilisé pour l'instant.</div></div></div>
@@ -187,6 +225,7 @@ function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
 function handle(ev) {
   switch (ev.type) {
     case 'hello':
+      if (ev.boot) { if (S.boot && S.boot !== ev.boot) { location.reload(); return; } S.boot = ev.boot; }
       $('name').textContent = ev.name.toUpperCase().split('').join('.') + '.';
       $('model').textContent = `${ev.model} · 100 % local`;
       $('mic').classList.toggle('off', !ev.mic);
@@ -202,7 +241,9 @@ function handle(ev) {
       break;
     }
     case 'model': $('model').textContent = `${ev.model} · 100 % local`; addMsg('heard', '', `Modèle : ${ev.model}`); break;
-    case 'view': setView(ev.view, ev.projects); break;
+    case 'view': setView(ev.view, ev.projects, ev); break;
+    case 'agenda': A.events = ev.events || []; A.today = ev.today; if (document.body.classList.contains('view-agenda')) renderAgenda(); break;
+    case 'agenda_goto': A.year = ev.year; A.month = ev.month; if (document.body.classList.contains('view-agenda')) renderAgenda(); break;
     case 'state': setState(ev.state, ev.awake); if (ev.standby && ev.state === 'idle') $('state').textContent = 'Veille profonde'; break;
     case 'standby': if (ev.on) { $('state').textContent = 'Veille profonde'; } else if (S.state === 'idle') { $('state').textContent = LABEL.idle; } break;
     case 'level': S.src = ev.src; S.target = Math.min(1, ev.v * (ev.src === 'mic' ? 12 : 5)); S.speech = ev.speech; S.lastLevel = performance.now(); break;
@@ -248,14 +289,53 @@ function addTool(ev) {
 }
 
 // ------------------------------------------------------------------ vue projets
-function setView(view, projects) {
+function setView(view, projects, ev) {
+  document.body.classList.remove('view-projects', 'view-agenda');
   if (view === 'projects') {
     renderProjects(projects || []);
     document.body.classList.add('view-projects');
-  } else {
-    document.body.classList.remove('view-projects');
+  } else if (view === 'agenda') {
+    if (ev && ev.events) { A.events = ev.events; A.today = ev.today; }
+    const t = new Date(A.today || Date.now()); A.year = t.getFullYear(); A.month = t.getMonth();
+    renderAgenda();
+    document.body.classList.add('view-agenda');
   }
 }
+
+// ------------------------------------------------------------------ vue agenda
+const A = { events: [], today: null, year: 0, month: 0 };
+const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
+const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function renderAgenda() {
+  const cal = $('acal'); cal.innerHTML = '';
+  $('amonth').textContent = `${MOIS[A.month]} ${A.year}`;
+  ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].forEach(d => { const e = document.createElement('div'); e.className = 'dow'; e.textContent = d; cal.appendChild(e); });
+  const first = new Date(A.year, A.month, 1); const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
+  const byDay = {}; A.events.forEach(e => (byDay[e.date] = byDay[e.date] || []).push(e));
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i); const k = iso(d);
+    const cell = document.createElement('div'); cell.className = 'day' + (d.getMonth() !== A.month ? ' other' : '') + (k === A.today ? ' today' : '');
+    cell.style.animationDelay = Math.min(i * 12, 400) + 'ms';
+    const n = document.createElement('div'); n.className = 'n'; n.textContent = d.getDate(); cell.appendChild(n);
+    (byDay[k] || []).slice(0, 3).forEach(e => { const x = document.createElement('div'); x.className = 'evt'; x.title = e.titre + (e.note ? ' — ' + e.note : '');
+      if (e.heure) { const b = document.createElement('b'); b.textContent = e.heure.replace(':', 'h'); x.appendChild(b); } x.appendChild(document.createTextNode(e.titre)); cell.appendChild(x); });
+    if ((byDay[k] || []).length > 3) { const m = document.createElement('div'); m.className = 'evt'; m.textContent = `+${byDay[k].length - 3}`; cell.appendChild(m); }
+    cal.appendChild(cell);
+    if (i >= 34 && d.getMonth() !== A.month && (i + 1) % 7 === 0) break;
+  }
+  const up = $('aup'); up.innerHTML = '';
+  const todayD = A.today || iso(new Date());
+  const next = A.events.filter(e => e.date >= todayD).slice(0, 8);
+  if (!next.length) { up.innerHTML = '<div class="empty">Rien de prévu.</div>'; }
+  next.forEach(e => { const d = new Date(e.date + 'T00:00:00'); const el = document.createElement('div'); el.className = 'up';
+    el.innerHTML = `<div class="w"></div><div class="t"></div>` + (e.note ? `<div class="no"></div>` : '');
+    el.querySelector('.w').textContent = `${JOURS[(d.getDay() + 6) % 7]} ${d.getDate()} ${MOIS[d.getMonth()]}` + (e.heure ? ` · ${e.heure.replace(':', 'h')}` : '');
+    el.querySelector('.t').textContent = e.titre; if (e.note) el.querySelector('.no').textContent = e.note; up.appendChild(el); });
+}
+$('aprev').onclick = () => { A.month--; if (A.month < 0) { A.month = 11; A.year--; } renderAgenda(); send({ type: 'agenda_month', year: A.year, month: A.month + 1 }); };
+$('anext').onclick = () => { A.month++; if (A.month > 11) { A.month = 0; A.year++; } renderAgenda(); send({ type: 'agenda_month', year: A.year, month: A.month + 1 }); };
+$('aback').onclick = () => { setView('home'); send({ type: 'view', view: 'home' }); };
 function renderProjects(list) {
   const grid = $('pgrid'); grid.innerHTML = '';
   $('pcount').textContent = `${list.length} projet${list.length > 1 ? 's' : ''}`;

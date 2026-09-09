@@ -88,7 +88,7 @@ class Registry:
         local = config.ROOT / "skills"
         for p in (sorted(local.rglob("SKILL.md")) if local.is_dir() else []):
             name, desc = _parse(p)
-            found[name] = (float("inf"), Skill(name, desc, p, "maison"))
+            found[name] = (float("inf"), Skill(name, desc, p, featured.get(name, "maison")))
         # 2 et 3 : toutes (SKILLS_ALL) ou seulement les mises en avant ; version la plus récente
         for root in config.SKILL_SOURCES:
             root = Path(root).expanduser()

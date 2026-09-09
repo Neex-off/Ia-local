@@ -50,7 +50,7 @@ def ensure_model(model: str) -> None:
 
 
 _ARTIFACTS = re.compile(r"^\s*\.?thought\b\s*|<\|?channel\|?>|<\|?end\|?>|<\|?message\|?>|<start_of_turn>|<end_of_turn>", re.I)
-_FILE_BLOCK = re.compile(r"<<<FICHIER\s*:\s*([^>\n]+?)\s*>>>\s*\n?(.*?)\n?\s*<<<FIN>>>", re.S)
+_FILE_BLOCK = re.compile(r"<<<FICHIER\s*:\s*([^>\n]+?)\s*>>>\s*\n?(.*?)\n?\s*(?:<<<FIN>>>|\Z)", re.S)
 
 
 def clean_answer(text: str) -> str:
@@ -70,7 +70,10 @@ def extract_file_blocks(text: str) -> str:
     def repl(m: re.Match) -> str:
         name, content = m.group(1).strip().strip('"'), m.group(2)
         content = re.sub(r"^```[a-zA-Z]*\n|\n```$", "", content.strip())
-        return write_file(name, content + "\n")
+        note = ""
+        if content.lower().count("<html") and "</html>" not in content.lower():
+            note = " (attention : le fichier semble incomplet, la génération a été coupée ; demande-moi de le terminer)"
+        return write_file(name, content + "\n") + note
 
     return _FILE_BLOCK.sub(repl, text)
 
@@ -139,11 +142,13 @@ def chat_stream(model: str, messages: list, cancel_event=None, timeout: float | 
     return Message(role="assistant", content=content, thinking=thinking or None, tool_calls=tool_calls or None)
 
 
-def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, cancel_event=None) -> str:
+def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, cancel_event=None,
+             on_tool_start=None) -> str:
     """Un tour complet : le modèle réfléchit, appelle des outils si besoin, puis répond.
 
-    on_tool      : appelé avec (nom, arguments, résultat) après chaque outil, pour une interface.
-    cancel_event : threading.Event ; s'il est posé, la génération en cours s'arrête.
+    on_tool       : appelé avec (nom, arguments, résultat) après chaque outil, pour une interface.
+    on_tool_start : appelé avec (nom, arguments, texte_du_modèle) AVANT d'exécuter un outil (pour annoncer à voix haute).
+    cancel_event  : threading.Event ; s'il est posé, la génération en cours s'arrête.
     Renvoie le texte final de l'assistant (chaîne vide si aucun).
     """
     empty_retries = 0
@@ -188,6 +193,11 @@ def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, 
             name = call.function.name
             args = call.function.arguments or {}
             fn = TOOL_MAP.get(name)
+            if on_tool_start is not None:
+                try:
+                    on_tool_start(name, args, (msg.content or "").strip())
+                except Exception:  # noqa: BLE001
+                    pass
             if show:
                 console.print(f"[cyan]→ outil[/cyan] {name}({', '.join(f'{k}={v!r}' for k, v in args.items())})")
             if fn is None:
@@ -240,7 +250,7 @@ def main() -> None:
     import memory
     import skills
     messages: list[dict] = [{"role": "system", "content": config.SYSTEM_PROMPT + "\n\n" + skills.get().prompt_section()
-                             + "\n\n" + memory.prompt_section()}]
+                             + "\n\n" + memory.prompt_section() + "\n\n" + memory.knowledge_prompt_section()}]
 
     while True:
         try:
@@ -266,7 +276,8 @@ def main() -> None:
             console.print(f"[dim]Modèle : {model}[/dim]")
             continue
 
-        messages.append({"role": "user", "content": user})
+        import agenda
+        messages.append({"role": "user", "content": f"{user}\n\n[Aujourd'hui : {agenda.today_line()}]"})
         try:
             run_turn(messages, state["model"])
         except KeyboardInterrupt:

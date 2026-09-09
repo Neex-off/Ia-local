@@ -79,6 +79,8 @@ class JarvisCore:
         # Veille profonde : modèles déchargés de la carte après STANDBY_AFTER_SECONDS en veille.
         self.standby = False
         self._idle_since: float | None = None
+        # Rappels de l'agenda à dire (remplis par le thread de surveillance).
+        self._notices: queue.Queue[str] = queue.Queue()
 
     # ------------------------------------------------------------------ API
     def submit_text(self, text: str) -> None:
@@ -190,7 +192,7 @@ class JarvisCore:
         import skills
         tools.UI_EMIT = self.emit
         self.messages[0]["content"] = (VOICE_SYSTEM_PROMPT + "\n\n" + skills.get().prompt_section()
-                                       + "\n\n" + memory.prompt_section())
+                                       + "\n\n" + memory.prompt_section() + "\n\n" + memory.knowledge_prompt_section())
         self.emit({"type": "loading", "step": f"Modèle de langage {self.model}", "done": False})
         ensure_model(self.model)
         _unload_others(self.model)
@@ -203,8 +205,46 @@ class JarvisCore:
         self.emit({"type": "loading", "step": "Prêt", "done": True})
         self._set_state("idle")
 
+    def _reminder_thread(self) -> None:
+        """Vérifie l'agenda régulièrement et met en file les rappels à dire."""
+        import agenda
+
+        while True:
+            try:
+                for text in agenda.due_reminders():
+                    self._notices.put(text)
+                    self._interrupt_listen.set()  # sort de l'écoute en cours pour parler tout de suite
+            except Exception as exc:  # noqa: BLE001
+                self.emit({"type": "error", "text": f"rappels : {exc}"})
+            time.sleep(config.REMINDER_CHECK_SECONDS)
+
+    def _speak_notices(self) -> bool:
+        """Dit les rappels en attente. Renvoie True si quelque chose a été dit."""
+        import memory
+
+        spoke = False
+        while True:
+            try:
+                text = self._notices.get_nowait()
+            except queue.Empty:
+                return spoke
+            self._leave_standby()
+            if self.on_wake is not None and not self.awake:
+                try:
+                    self.on_wake()  # ouvre la page si aucune n'est ouverte
+                except Exception:  # noqa: BLE001
+                    pass
+            self.awake = True
+            self._deadline = time.time() + config.ACTIVE_SECONDS
+            self.emit({"type": "assistant", "text": text, "seconds": 0})
+            memory.log_message("assistant", text)
+            print(f"[jarvis] rappel : {text}", flush=True)
+            self._say(text, interruptible=False)
+            spoke = True
+
     def run(self) -> None:
         """Boucle infinie. À lancer dans un thread."""
+        threading.Thread(target=self._reminder_thread, daemon=True, name="rappels").start()
         while True:
             try:
                 self._tick()
@@ -213,6 +253,10 @@ class JarvisCore:
                 time.sleep(0.5)
 
     def _tick(self) -> None:
+        # 0. Un rappel d'agenda à dire passe avant tout.
+        if self._speak_notices():
+            self._set_state("listening")
+            return
         # 1. Un texte tapé a priorité sur le micro.
         try:
             typed = self._typed.get_nowait()
@@ -295,9 +339,32 @@ class JarvisCore:
         memory.log_message("user", user)
         self._set_state("thinking")
         secrets: list[str] = []
+        import agenda
         with self._lock:
-            self.messages.append({"role": "user", "content": user})
+            # La date du jour accompagne chaque demande : indispensable pour « jeudi », « demain », l'agenda…
+            self.messages.append({"role": "user", "content": f"{user}\n\n[Aujourd'hui : {agenda.today_line()}]"})
             t = time.time()
+
+            spoken_cue = {"done": False}
+            CUES = {
+                "web_search": "Je regarde sur internet.", "research": "Je me renseigne sur internet.",
+                "fetch_url": "Je lis la page.", "open_site": "Je cherche le site.",
+                "search_files": "Je cherche dans tes fichiers.", "see_screen": "Je regarde l'écran.",
+                "use_skill": "Je m'en occupe, un instant.", "create_pdf": "Je prépare le document.",
+                "create_docx": "Je prépare le document.", "show_projects": "J'affiche tes projets.",
+                "open_url": "J'ouvre la page.", "open_app": "Je lance l'application.",
+            }
+
+            def on_tool_start(name, args, model_text):
+                # Une seule annonce parlée par tour, courte, avant le premier outil un peu long.
+                if spoken_cue["done"]:
+                    return
+                cue = model_text if 0 < len(model_text) <= 90 else CUES.get(name)
+                if cue:
+                    spoken_cue["done"] = True
+                    self.emit({"type": "assistant", "text": cue, "seconds": 0})
+                    self._say(cue)
+                    self._set_state("thinking")
 
             def on_tool(name, args, result):
                 self._set_state("tool")
@@ -311,7 +378,8 @@ class JarvisCore:
                 self._set_state("thinking")
 
             self._stop_speech.clear()  # le bouton Stop interrompt aussi la génération
-            answer = run_turn(self.messages, self.model, show=False, on_tool=on_tool, cancel_event=self._stop_speech)
+            answer = run_turn(self.messages, self.model, show=False, on_tool=on_tool, cancel_event=self._stop_speech,
+                              on_tool_start=on_tool_start)
             if secrets:
                 self._scrub(secrets)
                 for s in secrets:
