@@ -32,7 +32,7 @@ Variantes : `install.bat -All` installe aussi les modèles recherche et puissant
 ```bash
 git clone https://github.com/Neex-off/Ia-local.git
 cd Ia-local
-chmod +x install.sh && ./install.sh
+./install.sh
 ./jarvis.sh
 ```
 Le script installe Python 3.11, PortAudio et Ollama via Homebrew s'ils manquent (Homebrew : https://brew.sh).
@@ -44,7 +44,7 @@ la voix utilise la puce graphique (MPS).
 ```bash
 git clone https://github.com/Neex-off/Ia-local.git
 cd Ia-local
-chmod +x install.sh && ./install.sh
+./install.sh
 ./jarvis.sh
 ```
 Le script utilise `apt`, `dnf` ou `pacman` pour Python 3.11, PortAudio, ffmpeg, xdotool et wmctrl, et installe Ollama
