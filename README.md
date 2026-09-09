@@ -46,7 +46,7 @@ cd Ia-local
 chmod +x install.sh && ./install.sh
 ./jarvis.sh
 ```
-Le script utilise `apt`, `dnf` ou `pacman` pour Python 3.11, PortAudio, ffmpeg et xdotool, et installe Ollama
+Le script utilise `apt`, `dnf` ou `pacman` pour Python 3.11, PortAudio, ffmpeg, xdotool et wmctrl, et installe Ollama
 avec le script officiel. Avec une carte NVIDIA, installez les pilotes avant (`nvidia-smi` doit répondre).
 
 Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --no-voice` (mode texte seulement).

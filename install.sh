@@ -31,7 +31,11 @@ if [ -z "$PY" ]; then
   else echo "Installe Python 3.11 puis relance."; exit 1; fi
 fi
 echo "Python : $($PY --version)"
-if [ "$OS" = "Linux" ] && command -v apt-get >/dev/null; then sudo apt-get install -y portaudio19-dev libsndfile1 ffmpeg xdotool >/dev/null 2>&1 || true; fi
+if [ "$OS" = "Linux" ]; then
+  if command -v apt-get >/dev/null; then sudo apt-get install -y portaudio19-dev libsndfile1 ffmpeg xdotool wmctrl >/dev/null 2>&1 || true
+  elif command -v dnf >/dev/null; then sudo dnf install -y portaudio-devel libsndfile ffmpeg xdotool wmctrl >/dev/null 2>&1 || true
+  elif command -v pacman >/dev/null; then sudo pacman -S --noconfirm --needed portaudio libsndfile ffmpeg xdotool wmctrl >/dev/null 2>&1 || true; fi
+fi
 if [ "$OS" = "Darwin" ] && command -v brew >/dev/null; then brew list portaudio >/dev/null 2>&1 || brew install portaudio ffmpeg >/dev/null 2>&1 || true; fi
 
 say "2/6 Environnement virtuel"
