@@ -67,6 +67,7 @@ class JarvisCore:
         self.mic_enabled = True
         self.ears: Transcriber | None = None
         self.mouth: Speaker | None = None
+        self.voice_error = ""  # renseigné si la voix n'a pas pu se charger (Jarvis reste utilisable au clavier)
         self._typed: queue.Queue[str] = queue.Queue()
         self._stop_speech = threading.Event()
         self._interrupt_listen = threading.Event()
@@ -145,8 +146,10 @@ class JarvisCore:
         self.emit({"type": "standby", "on": True})
         t = time.time()
         try:
-            self.ears.to_standby()
-            self.mouth.to_standby()
+            if self.ears is not None:
+                self.ears.to_standby()
+            if self.mouth is not None:
+                self.mouth.to_standby()
             ollama.generate(model=self.model, prompt="", keep_alive=0)  # décharge le modèle d'Ollama
         except Exception as exc:  # noqa: BLE001
             self.emit({"type": "error", "text": f"veille profonde : {exc}"})
@@ -160,7 +163,8 @@ class JarvisCore:
         self.standby = False
         self.emit({"type": "standby", "on": False})
         t = time.time()
-        self.mouth.to_gpu()
+        if self.mouth is not None:
+            self.mouth.to_gpu()
         self._say("Un instant, je reviens.", interruptible=False)
 
         def rest():
@@ -169,7 +173,8 @@ class JarvisCore:
                                 options={"num_ctx": config.OPTIONS["num_ctx"]})  # précharge le modèle
             except Exception:  # noqa: BLE001
                 pass
-            self.ears.to_gpu()
+            if self.ears is not None:
+                self.ears.to_gpu()
             print(f"[jarvis] sortie de veille profonde en {time.time() - t:.1f}s", flush=True)
 
         threading.Thread(target=rest, daemon=True).start()
@@ -205,14 +210,37 @@ class JarvisCore:
                        f"{self.model} (profil {tier or 'inconnu'}). Quand « ollama pull {wanted} » sera terminé, "
                        f"dis « passe au modèle {model_tier(wanted) or wanted} »."})
         _unload_others(self.model)
-        self.emit({"type": "loading", "step": "Reconnaissance vocale (Whisper)", "done": False})
-        self.ears = Transcriber()
-        self.ears.warmup()
-        self.emit({"type": "loading", "step": "Synthèse vocale (Chatterbox)", "done": False})
-        self.mouth = Speaker()
-        self.mouth.warmup()
-        self.emit({"type": "loading", "step": "Prêt", "done": True})
+        # Le texte marche dès maintenant ; la voix (Whisper + Chatterbox, longue à charger, 4 Go à télécharger
+        # la première fois) arrive en arrière-plan. Si l'audio est impossible, Jarvis reste utilisable au clavier.
+        self.emit({"type": "loading", "step": "Prêt : tu peux écrire, la voix se charge en arrière-plan", "done": True})
         self._set_state("idle")
+        threading.Thread(target=self._load_voice, daemon=True, name="voix").start()
+
+    def _load_voice(self) -> None:
+        import voice
+
+        if voice.AUDIO_ERROR:
+            self.voice_error = voice.AUDIO_ERROR
+            self.emit({"type": "error", "text": voice.AUDIO_ERROR})
+            print(f"[jarvis] {voice.AUDIO_ERROR}", flush=True)
+            return
+        self.emit({"type": "assistant", "seconds": 0,
+                   "text": "Voix en cours de chargement (Whisper puis Chatterbox ; environ 4 Go à télécharger la première fois). "
+                           "Tu peux déjà m'écrire ici."})
+        try:
+            ears = Transcriber()
+            ears.warmup()
+            mouth = Speaker()
+            mouth.warmup()
+        except Exception as exc:  # noqa: BLE001
+            self.voice_error = (f"Voix indisponible : {exc}. Jarvis reste utilisable au clavier ; "
+                                "corrige (voir jarvis.log) puis relance.")
+            self.emit({"type": "error", "text": self.voice_error})
+            print(f"[jarvis] {self.voice_error}", flush=True)
+            return
+        self.mouth, self.ears = mouth, ears
+        self.emit({"type": "assistant", "text": "Voix prête : dis « Bonjour Jarvis ».", "seconds": 0})
+        print("[jarvis] voix prête", flush=True)
 
     def _reminder_thread(self) -> None:
         """Vérifie l'agenda régulièrement et met en file les rappels à dire."""
@@ -275,6 +303,11 @@ class JarvisCore:
             self._interrupt_listen.clear()
             self.awake = True
             self._handle(typed)
+            return
+        if self.ears is None or self.mouth is None:  # voix pas encore chargée (ou indisponible) : clavier seulement
+            if self.state != "idle":
+                self._set_state("idle")
+            time.sleep(0.2)
             return
 
         # 2. Sinon on écoute (par tranches courtes pour pouvoir réagir aux commandes).
@@ -471,6 +504,8 @@ class JarvisCore:
             self._set_state("listening" if self.awake else "idle")
 
     def _say_inner(self, text: str, interruptible: bool = True) -> None:
+        if self.mouth is None:  # pas de voix (chargement en cours ou audio indisponible) : le texte est déjà à l'écran
+            return
         if not interruptible:
             self.mouth.say(text, level_cb=self._tts_level, stop_event=None)
             return
