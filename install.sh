@@ -4,10 +4,11 @@
 #   ./install.sh            installation complète (modèle standard)
 #   ./install.sh --all      + modèles léger, recherche et puissant
 #   ./install.sh --no-voice sans reconnaissance ni synthèse vocale (mode texte seulement)
+#   ./install.sh --mini     vieux PC / sans carte graphique : seulement le modèle mini (2 Go), texte + voix légère
 set -e
 cd "$(dirname "$0")"
-ALL=0; VOICE=1
-for a in "$@"; do case "$a" in --all) ALL=1;; --no-voice) VOICE=0;; esac; done
+ALL=0; VOICE=1; MINI=0
+for a in "$@"; do case "$a" in --all) ALL=1;; --no-voice) VOICE=0;; --mini) MINI=1;; esac; done
 OS="$(uname -s)"
 say() { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
 
@@ -67,11 +68,18 @@ fi
 (ollama serve >/dev/null 2>&1 &) ; sleep 3
 chmod +x jarvis.sh jarvis-console.sh jarvis-arreter.sh 2>/dev/null || true
 mkdir -p workspace
-say "Modèle léger d'abord (gemma4:e4b-it-qat, ~5 Go) : dès qu'il est là, tu peux tester"
+say "Modèle mini d'abord (granite4.1:3b, 2 Go, marche sans carte graphique) : dès qu'il est là, tu peux tester"
+ollama pull granite4.1:3b
+if [ "$MINI" = "1" ]; then
+  say "6/6 Terminé (--mini : seulement le modèle mini ; plus tard : ollama pull gemma4:12b pour tout débloquer)"
+  echo "  Lance ./jarvis.sh puis dis « Bonjour Jarvis »."
+  exit 0
+fi
+say "Modèle léger (gemma4:e4b-it-qat, ~5 Go)"
 ollama pull gemma4:e4b-it-qat
 cat <<EOM
 
-  >>> Le modèle léger est prêt : tu peux DÉJÀ tester, dans un autre terminal :  ./jarvis.sh
+  >>> Les modèles mini et léger sont prêts : tu peux DÉJÀ tester, dans un autre terminal :  ./jarvis.sh
   >>> Jarvis démarre avec le modèle présent. Le modèle standard (complet) se télécharge maintenant ;
   >>> quand c'est fini, dis « passe au modèle standard » ou relance Jarvis.
 

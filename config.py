@@ -10,6 +10,14 @@ MODEL = "gemma4:12b"
 # Catalogue des modèles entre lesquels Jarvis peut basculer à chaud (« utilise un modèle plus léger »).
 # tools : None = tous les outils ; sinon la liste des outils gardés (les petits modèles se perdent avec 27 outils).
 MODELS = {
+    "mini": {
+        "name": "granite4.1:3b",
+        "vram": "2 Go (tourne aussi sur processeur seul, vieux PC sans carte graphique)",
+        "plus": "minuscule : 2 Go, démarre en une seconde, fonctionne sans carte graphique ; discuter, heure, calculs, ouvrir une appli ou un site, volume, musique, mémoire, agenda",
+        "moins": "pas d'écran, pas de fichiers, pas de recherche web, pas de documents ni de sites, ne voit pas les images, raisonnement limité",
+        "tools": ["get_datetime", "calculate", "open_app", "open_site", "change_volume", "media_control",
+                  "show_agenda", "hide_agenda", "add_event", "list_events", "remember", "recall", "switch_model", "list_models"],
+    },
     "léger": {
         "name": "gemma4:e4b-it-qat",
         "vram": "6 Go",
@@ -43,7 +51,7 @@ MODELS = {
     },
 }
 # Ordre du plus léger au plus lourd (pour dire « plus lourd / plus léger que l'actuel »).
-MODEL_ORDER = ["léger", "recherche", "standard", "puissant"]
+MODEL_ORDER = ["mini", "léger", "recherche", "standard", "puissant"]
 # Liste d'outils active (None = tous). Modifiée par switch_model.
 ACTIVE_TOOLS = None
 
@@ -256,7 +264,7 @@ Tu disposes d'outils. Utilise-les quand ils sont utiles, pas systématiquement :
 - MÉMOIRE : tu as une mémoire durable. Dès que l'utilisateur te dit quelque chose sur lui (prénom, ville, école, goûts, projets, habitudes, proches) ou te demande de retenir quelque chose, enregistre-le avec remember, sans en faire un plat. Pour retrouver un souvenir ou un détail d'une ancienne conversation, utilise recall. Si on te demande d'oublier, utilise forget.
 - PROJETS : « montre-moi les projets », « affiche mes projets » -> show_projects (PC et GitHub s'affichent à l'écran) ; « mes projets GitHub » -> show_projects("github") ; « les projets sur le PC » -> show_projects("local"). Puis résume en une phrase (nombre, les plus récents). « ferme les projets », « retour », « écran normal » -> hide_projects. Pour ouvrir un projet : open_file avec son chemin.
 - AGENDA : « montre l'agenda » / « ouvre le calendrier » -> show_agenda ; « ferme l'agenda » / « retour » -> hide_agenda ; « ajoute un rendez-vous dentiste jeudi à 15 h » -> add_event("Dentiste", "AAAA-MM-JJ", "15:00") en calculant la date exacte depuis la date du jour indiquée à la fin du message (jeudi = le prochain jeudi, demain = +1 jour, « dans deux semaines » = +14) ; « supprime le rendez-vous dentiste » -> remove_event("dentiste") ; « qu'est-ce que j'ai cette semaine / demain » -> list_events(7 / 2) ; « mois suivant » / « mois d'avant » / « montre octobre » / « reviens à ce mois-ci » -> agenda_month("suivant" / "précédent" / "octobre" / "actuel") qui change le calendrier affiché. Confirme en une phrase avec le jour en toutes lettres.
-- CHANGER DE MODÈLE : si l'utilisateur NOMME le modèle voulu (« passe au léger », « modèle recherche », « le standard », « le puissant », « option 2 », « un modèle plus léger », « plus puissant »), appelle switch_model DIRECTEMENT avec ce choix, sans lister ni redemander (« plus léger » = le profil juste en dessous de l'actuel, « plus puissant » = juste au-dessus). Ne lis la liste (list_models) que si la demande est vague (« change de modèle », « quels modèles tu as ? »). La conversation est conservée, l'ancien modèle est éteint.
+- CHANGER DE MODÈLE : si l'utilisateur NOMME le modèle voulu (« passe au mini », « passe au léger », « modèle recherche », « le standard », « le puissant », « option 2 », « un modèle plus léger », « plus puissant »), appelle switch_model DIRECTEMENT avec ce choix, sans lister ni redemander (« plus léger » = le profil juste en dessous de l'actuel, « plus puissant » = juste au-dessus). Ne lis la liste (list_models) que si la demande est vague (« change de modèle », « quels modèles tu as ? »). La conversation est conservée, l'ancien modèle est éteint.
 - run_command exécute une commande shell (PowerShell sous Windows, bash sur Mac et Linux) directement, sans confirmation. Ne l'utilise que si aucun autre outil ne convient, et jamais pour supprimer ou modifier des fichiers en dehors du dossier de travail.
 - Quand on te demande une action (ouvrir, lancer, écrire…), fais-la avec l'outil adapté, puis confirme en une phrase.
 - Tu contrôles entièrement l'ordinateur, souris et clavier compris, comme un humain assis devant : see_screen te donne une capture avec une grille de coordonnées et la liste des boutons, champs et liens de la fenêtre active. Ensuite click_element(nom) pour cliquer par nom (préférable), ou click(x, y) avec les coordonnées de la grille (double=True pour double-clic, right=True pour clic droit), zoom_screen(x, y) pour viser un petit élément ou lire un petit texte, move_mouse pour survoler, drag pour glisser-déposer ou déplacer un curseur, type_text pour écrire dans un champ (clique dedans avant), press_keys pour une touche ou un raccourci, scroll pour défiler, wait pour laisser charger, focus_window pour changer de fenêtre. Enchaîne les étapes toi-même jusqu'au bout de la tâche, en vérifiant l'écran entre chaque action.

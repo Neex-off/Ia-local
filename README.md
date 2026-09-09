@@ -19,14 +19,15 @@ Licence : usage libre, **paternité obligatoire**, pas de vente, valable aussi p
    cd Ia-local
    ```
 2. Double-cliquez sur **`install.bat`**. Le script installe tout seul ce qui manque : Python 3.11, Ollama,
-   PyTorch avec CUDA si vous avez une carte NVIDIA, toutes les bibliothèques, puis les modèles : **le léger d'abord**
-   (5 Go) et, dès qu'il est là, vous pouvez déjà lancer Jarvis et tester pendant que le standard (8 Go) finit de se
-   télécharger. Comptez 10 à 25 minutes selon la connexion (environ 17 Go).
+   PyTorch avec CUDA si vous avez une carte NVIDIA, toutes les bibliothèques, puis les modèles : **le mini d'abord**
+   (2 Go) et, dès qu'il est là, vous pouvez déjà lancer Jarvis et tester pendant que le léger (5 Go) et le standard
+   (8 Go) finissent de se télécharger. Comptez 10 à 25 minutes selon la connexion (environ 19 Go).
 3. Double-cliquez sur **`jarvis.bat`**. Une icône ronde apparaît près de l'horloge. Dites **« Bonjour Jarvis »** :
    la page s'ouvre dans votre navigateur.
 
 Variantes : `install.bat -All` installe aussi les modèles recherche et puissant (+ 22 Go) ;
-`install.bat -NoVoice` installe seulement le mode texte (rapide, sans PyTorch).
+`install.bat -NoVoice` installe seulement le mode texte (rapide, sans PyTorch) ; `install.bat -Mini` pour un vieux PC ou
+sans carte graphique : seulement le modèle mini (2 Go), tout le reste identique.
 
 ### macOS (Apple Silicon M1 à M4, ou Intel)
 ```bash
@@ -50,7 +51,8 @@ cd Ia-local
 Le script utilise `apt`, `dnf` ou `pacman` pour Python 3.11, PortAudio, ffmpeg, xdotool et wmctrl, et installe Ollama
 avec le script officiel. Avec une carte NVIDIA, installez les pilotes avant (`nvidia-smi` doit répondre).
 
-Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --no-voice` (mode texte seulement).
+Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --no-voice` (mode texte seulement),
+`./install.sh --mini` (vieux PC : seulement le modèle mini, 2 Go).
 
 > **État des tests** : Windows 11 avec RTX 5080, testé de bout en bout. macOS et Linux : scripts vérifiés
 > syntaxiquement, code importé et outils exercés en simulant ces systèmes, mais pas encore lancé sur une vraie
@@ -92,10 +94,11 @@ Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --
 
 ## 3. Les modèles
 
-Quatre profils, installés par `install.bat -All` / `./install.sh --all`, ou un par un :
+Cinq profils, installés par `install.bat -All` / `./install.sh --all`, ou un par un :
 
 | Profil | Modèle | Commande | Carte graphique | Pour quoi |
 |---|---|---|---|---|
+| mini | granite4.1:3b | `ollama pull granite4.1:3b` | 2 Go, ou processeur seul | vieux PC : discuter, heure, calculs, applis, volume, agenda |
 | léger | gemma4:e4b-it-qat | `ollama pull gemma4:e4b-it-qat` | 6 Go | discuter, applis, volume, musique |
 | recherche | granite4.1:8b | `ollama pull granite4.1:8b` | 5 Go | discuter et chercher sur le web |
 | **standard** (défaut) | gemma4:12b | `ollama pull gemma4:12b` | 8 Go | tout : écran, fichiers, sites, documents |
@@ -114,12 +117,13 @@ au premier lancement.
 
 | | Minimum | Confortable |
 |---|---|---|
-| Carte graphique | 8 Go de VRAM NVIDIA, ou Mac Apple Silicon 16 Go | NVIDIA 16 Go |
-| RAM | 16 Go | 32 Go |
-| Disque | 25 Go libres | 60 Go avec tous les modèles |
+| Carte graphique | aucune avec le profil mini (processeur seul) ; 8 Go de VRAM NVIDIA ou Mac Apple Silicon 16 Go pour le standard | NVIDIA 16 Go |
+| RAM | 8 Go (mini, texte) ; 16 Go | 32 Go |
+| Disque | 10 Go libres (mini) ; 25 Go | 60 Go avec tous les modèles |
 | Micro | n'importe lequel ; un casque évite qu'il s'entende lui-même | |
 
-Sans carte NVIDIA ni Apple Silicon, tout fonctionne sur processeur mais lentement : préférez `--no-voice` et le
+Vieux PC sans carte graphique : `--mini` (modèle de 2 Go, environ 20 mots par seconde sur un processeur récent, moins
+sur un ancien). Sans carte NVIDIA ni Apple Silicon, les autres modèles tournent sur processeur mais lentement : préférez `--no-voice` et le
 mode texte (`lancer.bat` sous Windows, `.venv/bin/python agent.py` ailleurs).
 
 ---

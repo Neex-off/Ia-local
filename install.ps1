@@ -3,7 +3,8 @@
 #   .\install.ps1            installation complète (modèle standard)
 #   .\install.ps1 -All       + modèles léger, recherche et puissant
 #   .\install.ps1 -NoVoice   sans reconnaissance ni synthèse vocale (mode texte seulement)
-param([switch]$All, [switch]$NoVoice)
+#   .\install.ps1 -Mini      vieux PC / sans carte graphique : seulement le modèle mini (2 Go)
+param([switch]$All, [switch]$NoVoice, [switch]$Mini)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 function Say($m) { Write-Host "`n==> $m" -ForegroundColor Cyan }
@@ -48,10 +49,17 @@ if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) {
 }
 Start-Process ollama -ArgumentList "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue; Start-Sleep 3
 New-Item -ItemType Directory -Force workspace | Out-Null
-Say "Modèle léger d'abord (gemma4:e4b-it-qat, ~5 Go) : dès qu'il est là, vous pouvez tester"
+Say "Modèle mini d'abord (granite4.1:3b, 2 Go, marche sans carte graphique) : dès qu'il est là, vous pouvez tester"
+ollama pull granite4.1:3b
+if ($Mini) {
+  Say "6/6 Terminé (-Mini : seulement le modèle mini ; plus tard : ollama pull gemma4:12b pour tout débloquer)"
+  Write-Host "  Double-cliquez sur jarvis.bat puis dites « Bonjour Jarvis »."
+  exit 0
+}
+Say "Modèle léger (gemma4:e4b-it-qat, ~5 Go)"
 ollama pull gemma4:e4b-it-qat
 Write-Host ""
-Write-Host "  >>> Le modèle léger est prêt : vous pouvez DÉJÀ tester en double-cliquant sur jarvis.bat" -ForegroundColor Green
+Write-Host "  >>> Les modèles mini et léger sont prêts : vous pouvez DÉJÀ tester en double-cliquant sur jarvis.bat" -ForegroundColor Green
 Write-Host "  >>> Jarvis démarre avec le modèle présent. Le modèle standard (complet) se télécharge maintenant ;" -ForegroundColor Green
 Write-Host "  >>> quand c'est fini, dites « passe au modèle standard » ou relancez Jarvis." -ForegroundColor Green
 Write-Host ""

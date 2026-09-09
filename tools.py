@@ -1058,15 +1058,17 @@ def switch_model(choice: str) -> str:
     tiers = _model_tiers()
     cur = next((i for i, _t, m in tiers if m["name"] == CURRENT_MODEL), None)
     words = key.split()
+    relative = words[:1] in (["plus"], ["moins"]) or key.startswith("un peu plus")
     # 1. un nom de profil ou de modèle (« léger », « recherche », « le standard », « gemma4:12b »)
-    for _i, t, m in tiers:
-        if _norm_app(t) in words or key == _norm_app(m["name"]):
-            entry = (t, m)
-            break
-    # 2. relatif : « plus léger » -> le profil léger ; « plus puissant » -> le profil juste au-dessus
+    if not relative:
+        for _i, t, m in tiers:
+            if _norm_app(t) in words or key == _norm_app(m["name"]):
+                entry = (t, m)
+                break
+    # 2. relatif : « plus léger » -> le profil juste en dessous ; « plus puissant » -> le profil juste au-dessus
     if entry is None and cur is not None:
         if any(w in words for w in ("leger", "petit", "rapide", "bas")) or "moins lourd" in key:
-            entry = next(((t, m) for i, t, m in tiers if i == 1), None)
+            entry = next(((t, m) for i, t, m in tiers if i == max(1, cur - 1)), None)
         elif any(w in words for w in ("puissant", "gros", "lourd", "fort", "haut", "intelligent", "gras")):
             entry = next(((t, m) for i, t, m in tiers if i == min(len(tiers), cur + 1)), None)
     # 3. un numéro seul (« 2 », « option 2 », « la deux », « numéro trois »)
