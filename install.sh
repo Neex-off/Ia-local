@@ -33,9 +33,9 @@ if [ -z "$PY" ]; then
 fi
 echo "Python : $($PY --version)"
 if [ "$OS" = "Linux" ]; then
-  if command -v apt-get >/dev/null; then sudo apt-get install -y portaudio19-dev libsndfile1 ffmpeg xdotool wmctrl >/dev/null 2>&1 || true
-  elif command -v dnf >/dev/null; then sudo dnf install -y portaudio-devel libsndfile ffmpeg xdotool wmctrl >/dev/null 2>&1 || true
-  elif command -v pacman >/dev/null; then sudo pacman -S --noconfirm --needed portaudio libsndfile ffmpeg xdotool wmctrl >/dev/null 2>&1 || true; fi
+  if command -v apt-get >/dev/null; then sudo apt-get install -y libportaudio2 portaudio19-dev libsndfile1 ffmpeg xdotool wmctrl python3-tk || echo "ATTENTION : des paquets système n'ont pas pu être installés (voir ci-dessus)"
+  elif command -v dnf >/dev/null; then sudo dnf install -y portaudio portaudio-devel libsndfile ffmpeg xdotool wmctrl python3-tkinter || echo "ATTENTION : des paquets système n'ont pas pu être installés"
+  elif command -v pacman >/dev/null; then sudo pacman -S --noconfirm --needed portaudio libsndfile ffmpeg xdotool wmctrl tk || echo "ATTENTION : des paquets système n'ont pas pu être installés"; fi
 fi
 if [ "$OS" = "Darwin" ] && command -v brew >/dev/null; then brew list portaudio >/dev/null 2>&1 || brew install portaudio ffmpeg >/dev/null 2>&1 || true; fi
 
@@ -56,6 +56,7 @@ if [ "$VOICE" = "1" ]; then
   .venv/bin/python -m pip install --no-deps chatterbox-tts
   .venv/bin/python -m pip install -r requirements-voice.txt
   if [ "$OS" = "Linux" ] && command -v nvidia-smi >/dev/null 2>&1; then .venv/bin/python -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12; fi
+  .venv/bin/python -c "import sounddevice" 2>/dev/null || echo "ATTENTION : PortAudio introuvable, la voix ne marchera pas (Ubuntu : sudo apt install libportaudio2 ; macOS : brew install portaudio). La page et le texte marchent quand même."
 else
   say "4/6 Mode texte : dépendances vocales ignorées (--no-voice)"
 fi

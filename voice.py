@@ -16,7 +16,15 @@ import unicodedata
 from pathlib import Path
 
 import numpy as np
-import sounddevice as sd
+
+try:
+    import sounddevice as sd
+    AUDIO_ERROR = ""
+except (ImportError, OSError) as _exc:  # PortAudio absent (Linux : libportaudio2, macOS : brew portaudio)
+    sd = None  # type: ignore[assignment]
+    AUDIO_ERROR = (f"Micro et haut-parleurs indisponibles : {_exc}. Installe PortAudio "
+                   "(Ubuntu/Debian : sudo apt install libportaudio2 ; Fedora : sudo dnf install portaudio ; "
+                   "macOS : brew install portaudio) puis relance Jarvis. En attendant, écris dans la page.")
 
 import config
 
@@ -42,6 +50,13 @@ def listen(
     stop_event   : si posé, on abandonne l'écoute et on renvoie un tableau vide.
     Renvoie un tableau vide si rien n'a été dit.
     """
+    if sd is None:  # pas d'audio : on attend simplement (le texte tapé dans la page reste possible)
+        deadline = time.time() + (wait_seconds if wait_seconds is not None else 3600)
+        while time.time() < deadline:
+            if stop_event is not None and stop_event.is_set():
+                break
+            time.sleep(0.2)
+        return np.zeros(0, dtype="float32")
     chunks: list[np.ndarray] = []
     q: queue.Queue[np.ndarray] = queue.Queue()
 
@@ -365,6 +380,8 @@ class Speaker:
                 level_cb(0.0)
 
     def _play(self, wav: np.ndarray, level_cb, stop_event) -> None:
+        if sd is None:
+            return  # pas de sortie audio : la réponse reste visible dans la page
         block = int(self.sr * 0.05)
         pos = 0
         with sd.OutputStream(samplerate=self.sr, channels=1, dtype="float32", blocksize=block) as out:
@@ -380,4 +397,5 @@ class Speaker:
                 pos += block
 
     def stop(self) -> None:
-        sd.stop()
+        if sd is not None:
+            sd.stop()

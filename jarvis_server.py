@@ -262,7 +262,14 @@ def lower_priority() -> None:
 if __name__ == "__main__":
     lower_priority()
     print(f"[jarvis] démarrage {time.strftime('%d/%m/%Y %H:%M:%S')}", flush=True)
-    start_tray()
+    try:
+        start_tray()
+    except Exception as exc:  # noqa: BLE001  (Linux sans zone de notification, Wayland…) : Jarvis marche sans icône
+        print(f"[jarvis] pas d'icône près de l'horloge ({exc}) ; la page reste accessible sur {URL}", flush=True)
+    import voice
+    if voice.AUDIO_ERROR:
+        print(f"[jarvis] {voice.AUDIO_ERROR}", flush=True)
+        history.append({"type": "error", "text": voice.AUDIO_ERROR, "t": time.time()})
     if "--no-browser" not in sys.argv:
         threading.Thread(target=open_browser_later, daemon=True).start()
     uvicorn.run(app, host=config.UI_HOST, port=config.UI_PORT, log_level="warning")
