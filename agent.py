@@ -116,7 +116,7 @@ _FILE_BLOCK = re.compile(r"<<<FICHIER\s*:\s*([^>\n]+?)\s*>>>\s*\n?(.*?)\n?\s*(?:
 def clean_answer(text: str) -> str:
     """Retire les jetons de canal que gemma4 laisse parfois échapper (« .thought », « <channel|> »…)."""
     cleaned = _ARTIFACTS.sub("", text)
-    return cleaned.strip() or text.strip()
+    return cleaned.strip()  # vide si le modèle n'a émis que des jetons de canal : run_turn relance alors
 
 
 def extract_file_blocks(text: str) -> str:
@@ -167,6 +167,13 @@ class Interrupted(Exception):
     """Génération interrompue (bouton Stop) ou trop longue (délai dépassé)."""
 
 
+class RunawayThinking(Exception):
+    """Le modèle réfléchit dans le vide au lieu de répondre (jetons de canal, pensée cachée sans fin)."""
+
+
+NUDGE = {"role": "user", "content": "(Réponds maintenant directement, en une ou deux phrases, sans réfléchir à voix haute.)"}
+
+
 def chat_stream(model: str, messages: list, cancel_event=None, timeout: float | None = None):
     """Appel au modèle en flux continu, interruptible : renvoie un Message assemblé."""
     from ollama import Message
@@ -188,6 +195,11 @@ def chat_stream(model: str, messages: list, cancel_event=None, timeout: float | 
                 thinking += m.thinking
             if m.tool_calls:
                 tool_calls.extend(m.tool_calls)
+            if not config.THINK and not tool_calls and (len(thinking) > 1200 or
+                                                        (len(content) > 300 and not _ARTIFACTS.sub("", content).strip())):
+                # gemma4 part parfois dans une « réflexion » cachée interminable malgré think=False (surtout après un
+                # outil) : on coupe tout de suite au lieu d'attendre 80 s, run_turn relance avec une consigne.
+                raise RunawayThinking()
             if cancel_event is not None and cancel_event.is_set():
                 raise Interrupted("interrompu par l'utilisateur")
             if deadline is not None and time.time() > deadline:
@@ -216,7 +228,18 @@ def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, 
         prune_images(messages)
         try:
             try:
-                msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT)
+                try:
+                    msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT)
+                except RunawayThinking:
+                    console.print("[yellow]Réflexion parasite du modèle : je relance avec une consigne directe.[/yellow]")
+                    messages.append(NUDGE)
+                    try:
+                        msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT)
+                    except RunawayThinking:
+                        from ollama import Message
+                        msg = Message(role="assistant", content="")  # traité comme une réponse vide : nouvel essai ci-dessous
+                    finally:
+                        messages.remove(NUDGE)
             except ollama.ResponseError as exc:
                 if "tokenize" in str(exc).lower() and strip_all_images(messages):
                     console.print("[yellow]Historique d'images invalide pour Ollama : captures retirées, nouvel essai.[/yellow]")

@@ -19,6 +19,7 @@ l'appelant (terminal ou interface web) qui décide quoi en faire.
 from __future__ import annotations
 
 import queue
+import re
 import threading
 import time
 
@@ -68,6 +69,7 @@ class JarvisCore:
         self.ears: Transcriber | None = None
         self.mouth: Speaker | None = None
         self.voice_error = ""  # renseigné si la voix n'a pas pu se charger (Jarvis reste utilisable au clavier)
+        self._last_said = ""   # dernière phrase dite, pour reconnaître son propre écho dans le micro
         self._typed: queue.Queue[str] = queue.Queue()
         self._stop_speech = threading.Event()
         self._interrupt_listen = threading.Event()
@@ -277,6 +279,23 @@ class JarvisCore:
         print("[jarvis] voix prête", flush=True)
         self._say(config.GREETING_START, interruptible=False)  # « Jarvis en ligne, monsieur… » à chaque démarrage
 
+    def _is_echo(self, heard: str, said: str | None = None) -> bool:
+        """Vrai si ce qui a été entendu est (en grande partie) ce que Jarvis vient de dire : il s'entend lui-même."""
+        import unicodedata
+
+        def words(s: str) -> list[str]:
+            s = unicodedata.normalize("NFKD", s.lower())
+            s = "".join(c for c in s if not unicodedata.combining(c))
+            return [w for w in re.findall(r"[a-z0-9]+", s) if len(w) > 1]
+
+        h = words(heard)
+        if len(h) < 2:
+            return False
+        ref = set(words(said or "")) | set(words(self._last_said))
+        if not ref:
+            return False
+        return sum(w in ref for w in h) / len(h) >= 0.7
+
     def _greeting(self) -> str:
         """Ce qu'il dit quand on l'appelle (« Jarvis ») : « Oui monsieur, que puis-je faire pour vous ? » et variantes."""
         import random
@@ -307,6 +326,8 @@ class JarvisCore:
         import memory
 
         spoke = False
+        if self.mouth is None:
+            return False  # la voix n'est pas encore prête : les rappels attendent dans la file, ils seront dits après
         while True:
             try:
                 text = self._notices.get_nowait()
@@ -383,6 +404,10 @@ class JarvisCore:
 
         heard = self.ears.transcribe(audio)
         if not heard:
+            return
+        if self._is_echo(heard):  # la fin de sa propre phrase captée par le micro (enceintes)
+            self.emit({"type": "heard", "text": f"(mon écho, ignoré) {heard}", "for_me": False})
+            print(f"[jarvis] écho de ma propre voix ignoré : « {heard[:50]} »", flush=True)
             return
         woke, text = strip_wake_word(heard)
 
@@ -547,6 +572,7 @@ class JarvisCore:
         """Parle. interruptible=False : ni la voix, ni Stop, ni un texte tapé ne peuvent couper (annonces système)."""
         if interruptible and not self._typed.empty():
             return  # une nouvelle demande attend déjà : inutile de parler
+        self._last_said = text
         self._stop_speech.clear()
         self._set_state("speaking")
         try:
@@ -577,13 +603,20 @@ class JarvisCore:
             if speech and not pause.is_set() and not self._stop_speech.is_set():
                 pause.set()
 
+        threshold = {"v": config.SILENCE_THRESHOLD * config.BARGE_IN_SENSITIVITY}
+
         def watcher() -> None:
             while not stop_listen.is_set() and not self._stop_speech.is_set():
-                audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen,
-                               threshold=config.SILENCE_THRESHOLD * config.BARGE_IN_SENSITIVITY)
+                audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen, threshold=threshold["v"])
                 if stop_listen.is_set() or self._stop_speech.is_set():
                     break
                 heard = self.ears.transcribe(audio) if audio.size else ""
+                if heard and self._is_echo(heard, text):
+                    # Jarvis s'entend lui-même (enceintes) : on ignore, et on rend le micro moins sensible
+                    # pour le reste de cette phrase afin de ne pas se couper en boucle.
+                    threshold["v"] *= 1.6
+                    print(f"[jarvis] écho de ma propre voix ignoré (« {heard[:40]} »), seuil {threshold['v']:.3f}", flush=True)
+                    heard = ""
                 if heard:
                     barge["text"] = heard
                     self._stop_speech.set()  # vraie coupure de parole
