@@ -70,6 +70,7 @@ class JarvisCore:
         self.mouth: Speaker | None = None
         self.voice_error = ""  # renseigné si la voix n'a pas pu se charger (Jarvis reste utilisable au clavier)
         self._last_said = ""   # dernière phrase dite, pour reconnaître son propre écho dans le micro
+        self._prompt_tokens = 9500  # taille du prompt système + outils, mesurée au préchauffage
         self._tts_recent: list[float] = []  # niveaux récents de la synthèse (≈ 300 ms) pour l'anti-écho
         self._echo_gain: float | None = None  # part de la voix de Jarvis qui revient dans le micro (enceintes)
         self._typed: queue.Queue[str] = queue.Queue()
@@ -228,6 +229,28 @@ class JarvisCore:
         self._set_state("idle")
         threading.Thread(target=self._load_voice, daemon=True, name="voix").start()
 
+    def _trim_history(self) -> None:
+        """Garde la conversation dans la fenêtre du modèle. Sinon Ollama décale le contexte : le prompt système
+        est rogné, le modèle se met à divaguer (réponses vides, « réflexions » sans fin) et chaque tour relit
+        tout le contexte (80 s sur une carte pleine). On retire les plus vieux échanges, par paires."""
+        budget_tokens = config.OPTIONS["num_ctx"] - self._prompt_tokens - 2500  # 2500 : place pour la réponse et les outils
+        budget_chars = max(4000, int(budget_tokens * 3))  # ~3 caractères par token (français + JSON d'outils)
+        history = self.messages[1:]
+        size = sum(len(str(m.get("content", ""))) + 200 * len(m.get("tool_calls") or []) for m in history)
+        dropped = 0
+        while len(history) > 2 and size > budget_chars:
+            m = history.pop(0)
+            size -= len(str(m.get("content", ""))) + 200 * len(m.get("tool_calls") or [])
+            dropped += 1
+            # ne pas laisser un résultat d'outil orphelin en tête (il doit suivre son appel)
+            while history and history[0].get("role") == "tool":
+                size -= len(str(history[0].get("content", "")))
+                history.pop(0)
+                dropped += 1
+        if dropped:
+            self.messages[1:] = history
+            print(f"[jarvis] conversation allégée : {dropped} ancien(s) message(s) retirés (fenêtre {config.OPTIONS['num_ctx']} tokens)", flush=True)
+
     def _warm_up(self) -> None:
         """Charge le modèle en mémoire et lui fait lire le prompt système une fois (cache) : la première vraie
         question répond en une seconde au lieu de 10 (ou bien plus si la carte est saturée). Signale ensuite
@@ -237,13 +260,15 @@ class JarvisCore:
         self.emit({"type": "loading", "step": f"Chargement de {self.model} en mémoire", "done": False})
         t = time.time()
         try:
-            ollama.chat(model=self.model, messages=self.messages + [{"role": "user", "content": "ok"}],
-                        tools=tools.active_tools(), think=False,
-                        options={"num_ctx": config.OPTIONS["num_ctx"], "num_predict": 1}, keep_alive=config.KEEP_ALIVE)
+            r = ollama.chat(model=self.model, messages=self.messages[:1] + [{"role": "user", "content": "ok"}],
+                            tools=tools.active_tools(), think=False,
+                            options={"num_ctx": config.OPTIONS["num_ctx"], "num_predict": 1}, keep_alive=config.KEEP_ALIVE)
+            if r.prompt_eval_count:
+                self._prompt_tokens = int(r.prompt_eval_count)  # taille réelle du prompt système + outils
         except Exception as exc:  # noqa: BLE001
             self.emit({"type": "error", "text": f"préchauffage du modèle : {exc}"})
             return
-        print(f"[jarvis] modèle {self.model} prêt en {time.time() - t:.1f}s", flush=True)
+        print(f"[jarvis] modèle {self.model} prêt en {time.time() - t:.1f}s (prompt système : {self._prompt_tokens} tokens)", flush=True)
         self._check_gpu_spill()
 
     def _check_gpu_spill(self) -> None:
@@ -496,6 +521,7 @@ class JarvisCore:
             # La date du jour accompagne chaque demande : indispensable pour « jeudi », « demain », l'agenda…
             import journal
             self.messages.append({"role": "user", "content": f"{user}\n\n[Aujourd'hui : {agenda.today_line()}. {journal.context_line()}]"})
+            self._trim_history()
             t = time.time()
 
             spoken_cue = {"done": False}
@@ -587,9 +613,11 @@ class JarvisCore:
             try:
                 import tools
                 # Charge le modèle ET lui fait lire le prompt système (cache) : la première question est instantanée
-                ollama.chat(model=new, messages=self.messages[:1] + [{"role": "user", "content": "ok"}],
-                            tools=tools.active_tools(), think=False, keep_alive=config.KEEP_ALIVE,
-                            options={"num_ctx": config.OPTIONS["num_ctx"], "num_predict": 1})
+                r = ollama.chat(model=new, messages=self.messages[:1] + [{"role": "user", "content": "ok"}],
+                                tools=tools.active_tools(), think=False, keep_alive=config.KEEP_ALIVE,
+                                options={"num_ctx": config.OPTIONS["num_ctx"], "num_predict": 1})
+                if r.prompt_eval_count:
+                    self._prompt_tokens = int(r.prompt_eval_count)
                 secs = time.time() - t0
                 self.emit({"type": "heard", "text": f"Modèle {new} chargé en {secs:.0f} s", "for_me": True})
                 print(f"[jarvis] modèle {new} chargé en {secs:.0f} s", flush=True)
