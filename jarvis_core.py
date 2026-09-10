@@ -553,30 +553,39 @@ class JarvisCore:
 
         # Coupure de parole : on écoute le micro pendant qu'il parle ; dès que l'utilisateur parle,
         # la synthèse s'arrête, et ce qu'il a dit est transcrit puis traité.
-        barge: dict = {"audio": None}
+        # Un bruit met la lecture en PAUSE (pas stop) ; on enregistre, on transcrit : si c'est une vraie phrase,
+        # Jarvis se tait et la traite ; sinon (toux, clavier, souris) il reprend exactement où il en était.
+        barge: dict = {"text": None}
         stop_listen = threading.Event()
+        pause = threading.Event()
 
         def on_level(rms: float, speech: bool) -> None:
-            if speech and not self._stop_speech.is_set():
-                self._stop_speech.set()
+            if speech and not pause.is_set() and not self._stop_speech.is_set():
+                pause.set()
 
         def watcher() -> None:
-            audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen,
-                           threshold=config.SILENCE_THRESHOLD * config.BARGE_IN_SENSITIVITY)
-            if audio.size:
-                barge["audio"] = audio
+            while not stop_listen.is_set() and not self._stop_speech.is_set():
+                audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen,
+                               threshold=config.SILENCE_THRESHOLD * config.BARGE_IN_SENSITIVITY)
+                if stop_listen.is_set() or self._stop_speech.is_set():
+                    break
+                heard = self.ears.transcribe(audio) if audio.size else ""
+                if heard:
+                    barge["text"] = heard
+                    self._stop_speech.set()  # vraie coupure de parole
+                    break
+                if pause.is_set():
+                    print("[jarvis] bruit pendant que je parle, pas une phrase : je reprends", flush=True)
+                pause.clear()  # fausse alerte : la lecture reprend
 
         th = threading.Thread(target=watcher, daemon=True)
         th.start()
-        self.mouth.say(text, level_cb=self._tts_level, stop_event=self._stop_speech)
-        if not self._stop_speech.is_set():
-            stop_listen.set()  # fin normale : plus besoin d'écouter
+        self.mouth.say(text, level_cb=self._tts_level, stop_event=self._stop_speech, pause_event=pause)
+        stop_listen.set()
         th.join(timeout=config.MAX_RECORD_SECONDS + 3)
-        if barge["audio"] is not None:
+        if barge["text"] is not None:
             self._set_state("listening" if self.awake else "idle")
-            heard = self.ears.transcribe(barge["audio"])
-            if not heard:
-                return
+            heard = barge["text"]
             self.emit({"type": "heard", "text": f"(coupé) {heard}", "for_me": True})
             if is_stop_phrase(heard) or is_sleep_phrase(heard):
                 if is_sleep_phrase(heard):

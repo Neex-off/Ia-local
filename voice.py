@@ -250,6 +250,7 @@ _MD_PATTERNS = [
     (re.compile(r"(?<=\d)\s*/\s*(?=\d)"), " divisé par "),
     (re.compile(r"[*_#>]+"), ""),                   # gras, italique, titres, citations
     (re.compile(r"^\s*[-•]\s+", re.M), ""),         # puces
+    (re.compile(r"(?:^|(?<=[.!?…:]\s))\s*\d{1,2}[.)]\s+(?=[A-Za-zÀ-ÿ])", re.M), ""),  # numéros de liste « 1. », « 2) »
     (re.compile(r"\s+"), " "),
 ]
 
@@ -262,11 +263,24 @@ def clean_for_speech(text: str) -> str:
 
 def split_sentences(text: str) -> list[str]:
     parts = re.split(r"(?<=[.!?…])\s+", text)
-    out: list[str] = []
+    # Les miettes (« 4. », « Ok. », un numéro de liste) font planter Chatterbox et sautaient en silence :
+    # on les recolle à la phrase suivante (ou précédente).
+    merged: list[str] = []
     for p in parts:
         p = p.strip()
         if not p:
             continue
+        if merged and len(re.sub(r"[^A-Za-zÀ-ÿ]", "", merged[-1])) < 6:
+            merged[-1] = merged[-1] + " " + p
+        else:
+            merged.append(p)
+    if len(merged) > 1 and len(re.sub(r"[^A-Za-zÀ-ÿ]", "", merged[-1])) < 6:
+        last = merged.pop()
+        merged[-1] = merged[-1] + " " + last
+    out: list[str] = []
+    for p in merged:
+        if not re.search(r"[A-Za-zÀ-ÿ]{2}", p):
+            continue  # que des chiffres ou de la ponctuation : rien à dire
         # Chatterbox préfère des phrases courtes : on coupe les très longues aux virgules
         while len(p) > 220:
             cut = p.rfind(",", 0, 220)
@@ -343,11 +357,13 @@ class Speaker:
     def warmup(self) -> None:
         self.synthesize("Bonjour.")
 
-    def say(self, text: str, level_cb=None, stop_event: threading.Event | None = None) -> None:
+    def say(self, text: str, level_cb=None, stop_event: threading.Event | None = None,
+            pause_event: threading.Event | None = None) -> None:
         """Parle le texte : chaque phrase est générée pendant que la précédente est lue.
 
-        level_cb   : appelé avec le niveau sonore (rms) toutes les ~50 ms pendant la lecture.
-        stop_event : si posé, la lecture s'interrompt.
+        level_cb    : appelé avec le niveau sonore (rms) toutes les ~50 ms pendant la lecture.
+        stop_event  : si posé, la lecture s'interrompt.
+        pause_event : tant qu'il est posé, la lecture attend (bruit entendu : on vérifie si c'est une vraie parole).
         """
         sentences = split_sentences(clean_for_speech(text))
         if not sentences:
@@ -362,7 +378,11 @@ class Speaker:
                 try:
                     q.put(self.synthesize(s))
                 except Exception as exc:  # noqa: BLE001
-                    print(f"[tts] erreur sur « {s[:40]}… » : {exc}", file=sys.stderr)
+                    print(f"[tts] erreur sur « {s[:40]}… » : {exc}, nouvel essai", file=sys.stderr)
+                    try:
+                        q.put(self.synthesize(s.rstrip(".!?…") + ", voilà."))  # reformulé : Chatterbox cale sur les bouts trop courts
+                    except Exception as exc2:  # noqa: BLE001
+                        print(f"[tts] phrase sautée « {s[:40]}… » : {exc2}", file=sys.stderr)
             q.put(None)
 
         threading.Thread(target=producer, daemon=True).start()
@@ -373,13 +393,13 @@ class Speaker:
                     break
                 if stop_event is not None and stop_event.is_set():
                     break
-                self._play(wav, level_cb, stop_event)
+                self._play(wav, level_cb, stop_event, pause_event)
         finally:
             cancelled.set()
             if level_cb is not None:
                 level_cb(0.0)
 
-    def _play(self, wav: np.ndarray, level_cb, stop_event) -> None:
+    def _play(self, wav: np.ndarray, level_cb, stop_event, pause_event: threading.Event | None = None) -> None:
         if sd is None:
             return  # pas de sortie audio : la réponse reste visible dans la page
         block = int(self.sr * 0.05)
@@ -388,6 +408,11 @@ class Speaker:
             while pos < len(wav):
                 if stop_event is not None and stop_event.is_set():
                     break
+                if pause_event is not None and pause_event.is_set():
+                    if level_cb is not None:
+                        level_cb(0.0)
+                    time.sleep(0.05)
+                    continue  # en pause : on reprend exactement là où on en était
                 chunk = wav[pos:pos + block]
                 if len(chunk) < block:
                     chunk = np.pad(chunk, (0, block - len(chunk)))
