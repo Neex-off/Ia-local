@@ -86,7 +86,7 @@ Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --
 | (le soir, de lui-même) « Monsieur, comment s'est passée votre journée ? » | conscience : il prend des nouvelles et note ce que vous racontez |
 | « Merci Jarvis » | se rendort |
 
-- **Le couper** : parlez pendant qu'il parle, ou dites « stop », ou la touche Échap.
+- **Le couper** : dites « stop » (ou « tais-toi », « chut », « merci Jarvis ») ; le reste ne l'interrompt pas, il finit sa phrase (`INTERRUPT_ONLY_ON_STOP`). Écrire un texte le coupe aussi, comme la touche Échap.
 - **Écrire** plutôt que parler : la zone de texte en bas de la page.
 - **Veille** : fermez la page, il se met en veille, puis en veille profonde une minute plus tard (carte graphique
   libérée). « Bonjour Jarvis » le rappelle, page comprise.

@@ -305,6 +305,18 @@ class JarvisCore:
             return False
         return sum(w in ref for w in h) / len(h) >= 0.7
 
+    @staticmethod
+    def _wants_stop(heard: str) -> bool:
+        """« stop », « tais-toi », « chut », « silence », « ça suffit », « merci Jarvis »… entendu pendant qu'il parle."""
+        import unicodedata
+
+        s = unicodedata.normalize("NFKD", heard.lower())
+        s = " ".join(re.sub(r"[^a-z ]+", " ", "".join(c for c in s if not unicodedata.combining(c))).split())
+        if len(s) > 40:
+            return False  # une longue phrase n'est pas un ordre de se taire
+        return is_stop_phrase(heard) or is_sleep_phrase(heard) or bool(
+            re.search(r"\b(stop|stoppe|tais toi|taisez vous|chut|silence|ca suffit|arrete|arretez|assez)\b", s))
+
     def _greeting(self) -> str:
         """Ce qu'il dit quand on l'appelle (« Jarvis ») : « Oui monsieur, que puis-je faire pour vous ? » et variantes."""
         import random
@@ -604,6 +616,9 @@ class JarvisCore:
         # la synthèse s'arrête, et ce qu'il a dit est transcrit puis traité.
         # Un bruit met la lecture en PAUSE (pas stop) ; on enregistre, on transcrit : si c'est une vraie phrase,
         # Jarvis se tait et la traite ; sinon (toux, clavier, souris) il reprend exactement où il en était.
+        # config.INTERRUPT_ONLY_ON_STOP : Jarvis finit toujours sa phrase ; il n'écoute que pour un « stop »
+        # (fenêtres courtes transcrites en continu), sans jamais mettre la lecture en pause.
+        only_stop = config.INTERRUPT_ONLY_ON_STOP
         barge: dict = {"text": None}
         stop_listen = threading.Event()
         pause = threading.Event()
@@ -617,15 +632,19 @@ class JarvisCore:
                 if len(calib) >= 8:
                     g = sorted(calib)[len(calib) // 2]  # médiane : robuste à un clic ou un mot isolé
                     self._echo_gain = g if self._echo_gain is None else 0.7 * self._echo_gain + 0.3 * g
-            if speech and not pause.is_set() and not self._stop_speech.is_set():
+            if not only_stop and speech and not pause.is_set() and not self._stop_speech.is_set():
                 pause.set()
 
         threshold = {"v": config.SILENCE_THRESHOLD * config.BARGE_IN_SENSITIVITY}
 
         def watcher() -> None:
             while not stop_listen.is_set() and not self._stop_speech.is_set():
-                audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen,
-                               threshold=lambda: self._echo_threshold(threshold["v"]))
+                if only_stop:  # fenêtres courtes : un « stop » est reconnu en ~1 s, la lecture continue
+                    audio = listen(wait_seconds=None, silence_seconds=0.5, max_seconds=2.5, level_cb=on_level,
+                                   stop_event=stop_listen, threshold=lambda: self._echo_threshold(threshold["v"]))
+                else:
+                    audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen,
+                                   threshold=lambda: self._echo_threshold(threshold["v"]))
                 if stop_listen.is_set() or self._stop_speech.is_set():
                     break
                 heard = self.ears.transcribe(audio) if audio.size else ""
@@ -634,6 +653,9 @@ class JarvisCore:
                     # pour le reste de cette phrase afin de ne pas se couper en boucle.
                     threshold["v"] *= 1.6
                     print(f"[jarvis] écho de ma propre voix ignoré (« {heard[:40]} »), seuil {threshold['v']:.3f}", flush=True)
+                    heard = ""
+                if heard and only_stop and not self._wants_stop(heard):
+                    self.emit({"type": "heard", "text": f"(pendant que je parle, ignoré) {heard}", "for_me": False})
                     heard = ""
                 if heard:
                     barge["text"] = heard
@@ -652,7 +674,7 @@ class JarvisCore:
             self._set_state("listening" if self.awake else "idle")
             heard = barge["text"]
             self.emit({"type": "heard", "text": f"(coupé) {heard}", "for_me": True})
-            if is_stop_phrase(heard) or is_sleep_phrase(heard):
+            if is_stop_phrase(heard) or is_sleep_phrase(heard) or (only_stop and self._wants_stop(heard)):
                 if is_sleep_phrase(heard):
                     self.awake = False
                     self._set_state("idle")

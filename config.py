@@ -252,6 +252,10 @@ BARGE_IN_SENSITIVITY = 3.0
 # le couper. Ce qu'il entend est aussi comparé à ce qu'il vient de dire : sa propre phrase est ignorée.
 ECHO_SUPPRESSION = True
 ECHO_MARGIN = 2.5
+# True : pendant qu'il parle, SEUL « stop » (ou « tais-toi », « chut », « silence », « ça suffit », « merci Jarvis »)
+# le coupe ; tout le reste (bruits, autres phrases, sa propre voix dans les enceintes) est ignoré et il finit sa phrase.
+# False : n'importe quelle phrase le coupe et est traitée comme une nouvelle demande.
+INTERRUPT_ONLY_ON_STOP = True
 
 # Détection de fin de phrase au micro.
 SILENCE_SECONDS = 1.2      # secondes de silence avant d'arrêter l'enregistrement
