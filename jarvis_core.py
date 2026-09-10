@@ -260,6 +260,23 @@ class JarvisCore:
                     print(f"[jarvis] {msg}", flush=True)
         except Exception:  # noqa: BLE001
             pass
+        # Windows pagine la mémoire vidéo en silence quand elle est pleine (Ollama croit être à 100 % sur la carte) :
+        # on regarde le taux d'occupation réel.
+        try:
+            import subprocess
+
+            out = subprocess.run(["nvidia-smi", "--query-gpu=memory.used,memory.total", "--format=csv,noheader,nounits"],
+                                 capture_output=True, text=True, timeout=5,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
+            used, total = (int(x) for x in out.split(",")[:2])
+            if total and used / total > 0.93:
+                msg = (f"Carte graphique pleine à {round(100 * used / total)} % ({used // 1024} Go sur {total // 1024}). "
+                       "Les réponses vont ralentir : ferme ce qui consomme de la mémoire vidéo (jeu, LM Studio, iCUE, overlay NVIDIA, "
+                       "onglets vidéo), ou dis « passe au modèle léger ».")
+                self.emit({"type": "error", "text": msg})
+                print(f"[jarvis] {msg}", flush=True)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _load_voice(self) -> None:
         import voice
