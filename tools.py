@@ -981,6 +981,36 @@ def remove_event(query: str) -> str:
     return "Supprimé : " + " ; ".join(agenda.fmt(e) for e in gone)
 
 
+def journal_add(kind: str, text: str) -> str:
+    """Note dans le journal de vie de l'utilisateur ce qu'il vient de raconter : une séance de sport (exercices, séries, charges, ressenti), sa journée, son humeur, ou un fait marquant. À appeler de toi-même dès qu'il raconte, sans le lui demander.
+
+    Args:
+        kind: "sport", "journee", "humeur" ou "autre".
+        text: Ce qu'il a dit, reformulé en une ou deux phrases fidèles (garde les chiffres : charges, séries, durées).
+    """
+    import journal
+
+    e = journal.add(kind, text)
+    return f"Noté dans le journal : {journal.fmt(e)}"
+
+
+def journal_read(days: int = 7, kind: str = "") -> str:
+    """Relit le journal de vie : séances de sport, journées, humeur des derniers jours (« qu'est-ce que j'ai fait à la salle cette semaine ? », « comment était ma semaine ? »).
+
+    Args:
+        days: Nombre de jours en arrière (7 par défaut, 30 pour un mois).
+        kind: Filtre facultatif : "sport", "journee", "humeur", "autre" ; vide = tout.
+    """
+    import journal
+
+    evs = journal.entries(int(days), kind)
+    n = journal.days_since_sport()
+    head = "Dernière séance de sport : " + ("aucune notée" if n is None else f"il y a {n} jour(s)") + "."
+    if not evs:
+        return head + f"\nRien dans le journal sur {days} jour(s)."
+    return head + "\n" + "\n".join(journal.fmt(e) for e in evs)
+
+
 def list_events(days: int = 7) -> str:
     """Liste les rendez-vous à venir (« qu'est-ce que j'ai cette semaine ? », « mon programme demain »).
 
@@ -1532,7 +1562,7 @@ def focus_window(title: str) -> str:
 
 # Liste passée au modèle. L'ordre n'a pas d'importance.
 TOOLS = [get_datetime, calculate, remember, recall, forget, research, learn, show_projects, hide_projects,
-         show_agenda, hide_agenda, agenda_month, add_event, remove_event, list_events,
+         show_agenda, hide_agenda, agenda_month, add_event, remove_event, list_events, journal_add, journal_read,
          list_models, switch_model, list_skills, use_skill,
          search_files, open_file, list_files, read_file, write_file, create_pdf, create_docx,
          check_app, list_apps, open_app, close_app, open_site, open_url, run_command, web_search, fetch_url,

@@ -81,6 +81,9 @@ Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --
 | « Lis mes mails non lus » | ouvre votre messagerie, regarde l'écran et vous lit les nouveaux messages |
 | « Baisse le son de Spotify » | règle le volume de cette application seulement (Windows) |
 | « Ferme Discord » | ferme l'application et vérifie qu'elle l'est vraiment |
+| « J'ai fait pecs aujourd'hui, développé couché 4 fois 8 à 80 kilos » | note la séance dans son journal et réagit |
+| « Qu'est-ce que j'ai fait à la salle cette semaine ? » | relit le journal |
+| (le soir, de lui-même) « Monsieur, comment s'est passée votre journée ? » | conscience : il prend des nouvelles et note ce que vous racontez |
 | « Merci Jarvis » | se rendort |
 
 - **Le couper** : parlez pendant qu'il parle, ou dites « stop », ou la touche Échap.
@@ -137,6 +140,8 @@ Tout est dans **`config.py`**, commenté ligne par ligne :
 | Réglage | Rôle |
 |---|---|
 | `ASSISTANT_NAME` | le mot qui le réveille (« Bonjour Jarvis ») |
+| `USER_TITLE`, `GREETINGS_WAKE`, `GREETING_START` | « monsieur », ce qu'il dit quand on l'appelle et au démarrage |
+| `CHECKIN_HOUR` | heure à partir de laquelle il demande de lui-même comment s'est passée la journée (None = jamais) |
 | `MODEL`, `MODELS` | modèle de démarrage et catalogue |
 | `CPU_AUTO_SMALL` | sans carte graphique, démarre avec le plus petit modèle installé au lieu de `MODEL` |
 | `voix/ma_voix.wav` | déposez 10 secondes de voix : il l'imite |
@@ -181,7 +186,8 @@ voice.py          Whisper + Chatterbox           tools.py          les outils du
 computer.py       écran, souris, clavier         file_index.py     index SQLite des fichiers
 memory.py         mémoire durable                projets.py        projets locaux et GitHub
 skills.py         compétences (SKILL.md)         skills/           compétences maison
-agenda.py         rendez-vous et rappels         memoire/          faits, connaissances, agenda (jamais publiés)
+agenda.py         rendez-vous et rappels         memoire/          faits, connaissances, agenda, journal (jamais publiés)
+journal.py        journal de vie : sport, journées, humeur (la « conscience » de Jarvis)
 ```
 
 ## 8. Sécurité et responsabilité

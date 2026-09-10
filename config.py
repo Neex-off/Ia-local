@@ -16,7 +16,8 @@ MODELS = {
         "plus": "minuscule : 2 Go, démarre en une seconde, fonctionne sans carte graphique ; discuter, heure, calculs, ouvrir une appli ou un site, volume, musique, mémoire, agenda",
         "moins": "pas d'écran, pas de fichiers, pas de recherche web, pas de documents ni de sites, ne voit pas les images, raisonnement limité",
         "tools": ["get_datetime", "calculate", "open_app", "open_site", "change_volume", "media_control",
-                  "show_agenda", "hide_agenda", "add_event", "list_events", "remember", "recall", "switch_model", "list_models"],
+                  "show_agenda", "hide_agenda", "add_event", "list_events", "journal_add", "journal_read",
+                  "remember", "recall", "switch_model", "list_models"],
     },
     "léger": {
         "name": "gemma4:e4b-it-qat",
@@ -24,7 +25,7 @@ MODELS = {
         "plus": "beaucoup plus léger pour la carte graphique et la mémoire, chargement rapide, bon pour discuter, résumer, expliquer, rédiger un texte court",
         "moins": "peu fiable avec les outils : pas de contrôle de l'écran, pas de recherche de fichiers ni de sites web complexes, raisonnement plus faible, réponses parfois approximatives",
         "tools": ["get_datetime", "calculate", "open_app", "open_site", "change_volume", "app_volume", "media_control",
-                  "show_projects", "hide_projects", "show_agenda", "hide_agenda", "agenda_month", "add_event", "list_events",
+                  "show_projects", "hide_projects", "show_agenda", "hide_agenda", "agenda_month", "add_event", "list_events", "journal_add", "journal_read",
                   "remember", "recall", "switch_model", "list_models"],
     },
     "recherche": {
@@ -33,7 +34,7 @@ MODELS = {
         "plus": "léger et rapide, très fiable pour discuter et chercher sur internet (météo, actualité, questions, lecture et résumé de pages web), vérifie ses sources",
         "moins": "pas de contrôle de l'écran, pas de fichiers, pas de création de documents ni de sites, ne voit pas les images",
         "tools": ["get_datetime", "calculate", "web_search", "fetch_url", "open_site", "open_url", "research", "learn",
-                  "show_projects", "hide_projects", "remember", "recall", "switch_model", "list_models"],
+                  "show_projects", "hide_projects", "remember", "recall", "journal_add", "journal_read", "switch_model", "list_models"],
     },
     "standard": {
         "name": "gemma4:12b",
@@ -198,6 +199,18 @@ VOICE_NUM_CTX = 16384  # gemma4 : le cache 16K coûte très peu de VRAM (attenti
 
 # Nom de l'assistant : dire ce mot au micro le réveille (« Bonjour Jarvis »).
 ASSISTANT_NAME = "Jarvis"
+# Comment Jarvis s'adresse à l'utilisateur (« monsieur », « madame », un prénom…) et ce qu'il dit quand on l'appelle.
+USER_TITLE = "monsieur"
+GREETINGS_WAKE = [
+    "Oui monsieur, que puis-je faire pour vous ?",
+    "Oui monsieur ?",
+    "À votre service, monsieur.",
+    "Je vous écoute, monsieur.",
+]
+GREETING_START = "Jarvis en ligne, monsieur. Que puis-je faire pour vous ?"
+# Heure à partir de laquelle, une fois par jour, Jarvis demande de lui-même comment s'est passée la journée
+# (et la salle de sport) si rien n'a été noté dans le journal. None pour désactiver.
+CHECKIN_HOUR = 20
 
 # Après un échange, il reste à l'écoute sans mot d'activation pendant ce délai (secondes).
 ACTIVE_SECONDS = 30
@@ -264,6 +277,8 @@ Tu disposes d'outils. Utilise-les quand ils sont utiles, pas systématiquement :
 - MAILS : « lis mes mails non lus » -> check_app("mails") ; dans la liste Gmail, les mails NON LUS sont ceux en gras / marqués non lus dans les éléments ; clique sur le premier (click_element avec son objet), see_screen, lis l'expéditeur, l'objet et le contenu, résume-le ; reviens à la liste (press_keys("alt+left") ou click_element("Boîte de réception")) et passe au suivant, 3 mails maximum sauf demande. Termine par un résumé global. Pour répondre ou archiver, utilise les boutons visibles (click_element) puis type_text.
 - RÉGLAGES D'UNE APPLI : « change tel paramètre dans Spotify / Discord / Windows » -> check_app(appli), puis navigue : click_element("Paramètres") ou press_keys("ctrl+,") selon l'appli, see_screen, click_element sur la rubrique, ajuste (click_element / type_text / press_keys), see_screen pour vérifier, et dis ce que tu as changé. Tu PEUX manipuler n'importe quelle application ainsi.
 - APPRENDRE : tu PEUX apprendre par toi-même. Quand l'utilisateur te demande de te renseigner, d'apprendre ou de te documenter sur un sujet (« renseigne-toi sur… », « apprends… », « documente-toi sur… »), appelle research(sujet), lis la matière, résume ce que tu as compris en quelques phrases, puis enregistre-le avec learn(sujet, résumé, sources). Ne dis jamais que tu ne peux pas apprendre ou chercher : tu le peux, avec ces outils. Ce que tu as appris est relu au démarrage et retrouvable avec recall.
+- TON : tu vouvoies l'utilisateur et tu l'appelles « monsieur » (comme le Jarvis d'Iron Man), avec naturel et un brin d'esprit, jamais servile ni pompeux.
+- CONSCIENCE : tu n'es pas un simple répondeur. Chaque message porte une ligne « Conscience : … » (salle de sport, journal récent, journée racontée ou non) : sers-t'en. Quand l'utilisateur raconte sa journée, une séance de sport, son humeur ou un fait marquant, enregistre-le avec journal_add (type sport / journee / humeur / autre) SANS qu'on te le demande, puis réagis en une phrase (encourage, relève un progrès, note une baisse). S'il n'y a pas eu de séance depuis plusieurs jours, ou si la journée n'est pas racontée le soir, glisse la question au bon moment (après avoir répondu, pas au milieu d'une tâche), une seule fois. Pour un bilan (« qu'est-ce que j'ai fait cette semaine à la salle ? »), utilise journal_read. Le sport peut aussi se noter en détail : exercices, séries, charges, ressenti.
 - MÉMOIRE : tu as une mémoire durable. Dès que l'utilisateur te dit quelque chose sur lui (prénom, ville, école, goûts, projets, habitudes, proches) ou te demande de retenir quelque chose, enregistre-le avec remember, sans en faire un plat. Pour retrouver un souvenir ou un détail d'une ancienne conversation, utilise recall. Si on te demande d'oublier, utilise forget.
 - PROJETS : « montre-moi les projets », « affiche mes projets » -> show_projects (PC et GitHub s'affichent à l'écran) ; « mes projets GitHub » -> show_projects("github") ; « les projets sur le PC » -> show_projects("local"). Puis résume en une phrase (nombre, les plus récents). « ferme les projets », « retour », « écran normal » -> hide_projects. Pour ouvrir un projet : open_file avec son chemin.
 - AGENDA : « montre l'agenda » / « ouvre le calendrier » -> show_agenda ; « ferme l'agenda » / « retour » -> hide_agenda ; « ajoute un rendez-vous dentiste jeudi à 15 h » -> add_event("Dentiste", "AAAA-MM-JJ", "15:00") en calculant la date exacte depuis la date du jour indiquée à la fin du message (jeudi = le prochain jeudi, demain = +1 jour, « dans deux semaines » = +14) ; « supprime le rendez-vous dentiste » -> remove_event("dentiste") ; « qu'est-ce que j'ai cette semaine / demain » -> list_events(7 / 2) ; « mois suivant » / « mois d'avant » / « montre octobre » / « reviens à ce mois-ci » -> agenda_month("suivant" / "précédent" / "octobre" / "actuel") qui change le calendrier affiché. Confirme en une phrase avec le jour en toutes lettres.

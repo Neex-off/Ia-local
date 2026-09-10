@@ -273,16 +273,29 @@ class JarvisCore:
             print(f"[jarvis] {self.voice_error}", flush=True)
             return
         self.mouth, self.ears = mouth, ears
-        self.emit({"type": "assistant", "text": "Voix prête : dis « Bonjour Jarvis ».", "seconds": 0})
+        self.emit({"type": "assistant", "text": config.GREETING_START, "seconds": 0})
         print("[jarvis] voix prête", flush=True)
+        self._say(config.GREETING_START, interruptible=False)  # « Jarvis en ligne, monsieur… » à chaque démarrage
+
+    def _greeting(self) -> str:
+        """Ce qu'il dit quand on l'appelle (« Jarvis ») : « Oui monsieur, que puis-je faire pour vous ? » et variantes."""
+        import random
+
+        return random.choice(config.GREETINGS_WAKE) if config.GREETINGS_WAKE else "Oui ?"
 
     def _reminder_thread(self) -> None:
         """Vérifie l'agenda régulièrement et met en file les rappels à dire."""
         import agenda
 
+        import journal
+
         while True:
             try:
-                for text in agenda.due_reminders():
+                notices = agenda.due_reminders()
+                question = journal.checkin_question()  # le soir : « comment s'est passée votre journée ? »
+                if question:
+                    notices.append(question)
+                for text in notices:
                     self._notices.put(text)
                     self._interrupt_listen.set()  # sort de l'écoute en cours pour parler tout de suite
             except Exception as exc:  # noqa: BLE001
@@ -394,7 +407,7 @@ class JarvisCore:
                 except Exception as exc:  # noqa: BLE001
                     self.emit({"type": "error", "text": f"on_wake : {exc}"})
             if not text:
-                self._say("Oui ?")
+                self._say(self._greeting())
                 self._deadline = time.time() + config.ACTIVE_SECONDS
                 self._set_state("listening")
                 return
@@ -402,7 +415,7 @@ class JarvisCore:
         user = (text if woke else heard).strip()
         if not user or len(user) < 2:
             # Juste « Jarvis » (ou un bruit) alors qu'il est déjà réveillé : on relance l'écoute.
-            self._say("Oui ?")
+            self._say(self._greeting())
             self._deadline = time.time() + config.ACTIVE_SECONDS
             self._set_state("listening")
             return
@@ -418,7 +431,8 @@ class JarvisCore:
         import agenda
         with self._lock:
             # La date du jour accompagne chaque demande : indispensable pour « jeudi », « demain », l'agenda…
-            self.messages.append({"role": "user", "content": f"{user}\n\n[Aujourd'hui : {agenda.today_line()}]"})
+            import journal
+            self.messages.append({"role": "user", "content": f"{user}\n\n[Aujourd'hui : {agenda.today_line()}. {journal.context_line()}]"})
             t = time.time()
 
             spoken_cue = {"done": False}
