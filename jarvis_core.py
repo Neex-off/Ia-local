@@ -210,11 +210,45 @@ class JarvisCore:
                        f"{self.model} (profil {tier or 'inconnu'}). Quand « ollama pull {wanted} » sera terminé, "
                        f"dis « passe au modèle {model_tier(wanted) or wanted} »."})
         _unload_others(self.model)
+        self._warm_up()
         # Le texte marche dès maintenant ; la voix (Whisper + Chatterbox, longue à charger, 4 Go à télécharger
         # la première fois) arrive en arrière-plan. Si l'audio est impossible, Jarvis reste utilisable au clavier.
         self.emit({"type": "loading", "step": "Prêt : tu peux écrire, la voix se charge en arrière-plan", "done": True})
         self._set_state("idle")
         threading.Thread(target=self._load_voice, daemon=True, name="voix").start()
+
+    def _warm_up(self) -> None:
+        """Charge le modèle en mémoire et lui fait lire le prompt système une fois (cache) : la première vraie
+        question répond en une seconde au lieu de 10 (ou bien plus si la carte est saturée). Signale ensuite
+        si le modèle déborde sur le processeur."""
+        import tools
+
+        self.emit({"type": "loading", "step": f"Chargement de {self.model} en mémoire", "done": False})
+        t = time.time()
+        try:
+            ollama.chat(model=self.model, messages=self.messages + [{"role": "user", "content": "ok"}],
+                        tools=tools.active_tools(), think=False,
+                        options={"num_ctx": config.OPTIONS["num_ctx"], "num_predict": 1}, keep_alive=config.KEEP_ALIVE)
+        except Exception as exc:  # noqa: BLE001
+            self.emit({"type": "error", "text": f"préchauffage du modèle : {exc}"})
+            return
+        print(f"[jarvis] modèle {self.model} prêt en {time.time() - t:.1f}s", flush=True)
+        self._check_gpu_spill()
+
+    def _check_gpu_spill(self) -> None:
+        """Si Ollama a dû mettre une partie du modèle sur le processeur (carte graphique pleine), prévient :
+        c'est la cause n°1 des réponses qui prennent une minute."""
+        try:
+            for m in ollama.ps().models:
+                if m.model in (self.model, f"{self.model}:latest") and m.size and m.size_vram is not None and m.size_vram < m.size:
+                    pct = round(100 * (m.size - m.size_vram) / m.size)
+                    msg = (f"Attention : {pct} % du modèle {self.model} est sur le processeur, la carte graphique est pleine. "
+                           "Les réponses seront lentes. Ferme les applis gourmandes (jeu, LM Studio, navigateur avec vidéos) "
+                           "puis relance Jarvis, ou dis « passe au modèle léger ».")
+                    self.emit({"type": "error", "text": msg})
+                    print(f"[jarvis] {msg}", flush=True)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _load_voice(self) -> None:
         import voice
@@ -474,11 +508,15 @@ class JarvisCore:
         if new:
             t0 = time.time()
             try:
-                ollama.generate(model=new, prompt="", keep_alive=config.KEEP_ALIVE,
-                                options={"num_ctx": config.OPTIONS["num_ctx"]})
+                import tools
+                # Charge le modèle ET lui fait lire le prompt système (cache) : la première question est instantanée
+                ollama.chat(model=new, messages=self.messages[:1] + [{"role": "user", "content": "ok"}],
+                            tools=tools.active_tools(), think=False, keep_alive=config.KEEP_ALIVE,
+                            options={"num_ctx": config.OPTIONS["num_ctx"], "num_predict": 1})
                 secs = time.time() - t0
                 self.emit({"type": "heard", "text": f"Modèle {new} chargé en {secs:.0f} s", "for_me": True})
                 print(f"[jarvis] modèle {new} chargé en {secs:.0f} s", flush=True)
+                self._check_gpu_spill()
                 self._say("C'est prêt, je t'écoute.", interruptible=False)
             except Exception as exc:  # noqa: BLE001
                 self.emit({"type": "error", "text": f"chargement de {new} : {exc}"})

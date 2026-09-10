@@ -37,6 +37,36 @@ def model_tier(model: str) -> str | None:
     return next((t for t in config.MODEL_ORDER if config.MODELS[t]["name"] == model), None)
 
 
+def has_gpu() -> bool:
+    """Carte NVIDIA utilisable (nvidia-smi répond) ou Mac Apple Silicon. Sinon : processeur seul."""
+    import platform
+    import shutil
+    import subprocess
+
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return True
+    if shutil.which("nvidia-smi"):
+        try:
+            return subprocess.run(["nvidia-smi", "-L"], capture_output=True, timeout=5,
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).returncode == 0
+        except Exception:  # noqa: BLE001
+            return False
+    return False
+
+
+def cpu_only_choice(model: str, names: set[str]) -> str | None:
+    """Sans carte graphique, un gros modèle met des minutes à répondre : renvoie le plus petit modèle du
+    catalogue déjà installé (mini, puis léger) si `model` est plus lourd, sinon None."""
+    tier = model_tier(model)
+    if tier is None or config.MODEL_ORDER.index(tier) <= 1:
+        return None  # déjà mini ou léger
+    for t in config.MODEL_ORDER[:2]:
+        cand = config.MODELS[t]["name"]
+        if cand in names or f"{cand}:latest" in names:
+            return cand
+    return None
+
+
 def ensure_model(model: str, fallback: bool = True) -> str:
     """Vérifie qu'Ollama répond et renvoie le modèle à utiliser.
 
@@ -55,6 +85,13 @@ def ensure_model(model: str, fallback: bool = True) -> str:
         return m in names or f"{m}:latest" in names
 
     if present(model):
+        if fallback and config.CPU_AUTO_SMALL and not has_gpu():
+            small = cpu_only_choice(model, names)
+            if small:
+                console.print(f"[yellow]Pas de carte graphique : {model} serait très lent, démarrage avec {small} "
+                              f"(profil {model_tier(small)}). Pour forcer {model} : /model {model}, ou MODEL dans config.py "
+                              f"et CPU_AUTO_SMALL = False.[/yellow]")
+                return small
         return model
     if fallback:
         for tier in config.MODEL_ORDER:

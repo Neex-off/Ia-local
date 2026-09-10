@@ -106,7 +106,9 @@ Cinq profils, installés par `install.bat -All` / `./install.sh --all`, ou un pa
 
 Changer à la voix : « passe au modèle recherche », ou « change de modèle » pour qu'il lise les options. Le modèle
 de démarrage est `MODEL` dans `config.py` ; s'il n'est pas encore téléchargé, Jarvis démarre avec le premier modèle
-du catalogue déjà installé (le léger d'abord) et vous le dit. Tout modèle Ollama compatible outils peut être ajouté au catalogue `MODELS`.
+du catalogue déjà installé (le mini d'abord) et vous le dit. Sans carte graphique, il prend le mini ou le léger même si
+`MODEL` est installé, pour ne pas attendre des minutes. Au démarrage et à chaque changement, le modèle est préchauffé :
+la première question répond en une seconde. Tout modèle Ollama compatible outils peut être ajouté au catalogue `MODELS`.
 
 Les modèles de voix (Whisper `large-v3-turbo` et Chatterbox multilingue, environ 4 Go) se téléchargent tout seuls
 au premier lancement.
@@ -136,6 +138,7 @@ Tout est dans **`config.py`**, commenté ligne par ligne :
 |---|---|
 | `ASSISTANT_NAME` | le mot qui le réveille (« Bonjour Jarvis ») |
 | `MODEL`, `MODELS` | modèle de démarrage et catalogue |
+| `CPU_AUTO_SMALL` | sans carte graphique, démarre avec le plus petit modèle installé au lieu de `MODEL` |
 | `voix/ma_voix.wav` | déposez 10 secondes de voix : il l'imite |
 | `VOCAB_HINTS` | vos noms propres, pour la reconnaissance vocale |
 | `BARGE_IN_SENSITIVITY` | à monter si vous utilisez des enceintes |
@@ -157,7 +160,7 @@ Les compétences tierces (Anthropic, communauté) ne sont pas incluses dans ce d
 | « Impossible de joindre Ollama » | lancez Ollama (icône, ou `ollama serve`) puis relancez Jarvis |
 | Il ne m'entend pas | vérifiez le micro par défaut du système ; montez `SILENCE_THRESHOLD` si la pièce est bruyante, baissez-le s'il ne réagit pas |
 | Il se coupe tout seul avec des enceintes | montez `BARGE_IN_SENSITIVITY` (5 à 8) ou mettez `BARGE_IN = False` |
-| Réponses très lentes | carte graphique saturée : fermez les jeux, ou passez au modèle léger |
+| Réponses très lentes (une minute) | la carte graphique est pleine et le modèle déborde sur le processeur : Jarvis l'affiche en rouge au démarrage. Fermez les applis gourmandes (jeu, LM Studio, vidéos), relancez, ou « passe au modèle léger ». Sans carte graphique, Jarvis choisit tout seul le modèle mini (`CPU_AUTO_SMALL`) |
 | La page reste sur « Initialisation » | seul le modèle de langage est nécessaire pour écrire : la page passe à « Prêt » dès qu'il est là, la voix se charge ensuite en arrière-plan (4 Go à télécharger la première fois, suivez `jarvis.log`). Si la voix échoue, un message rouge l'explique et le clavier marche |
 | « Ce site est inaccessible » sur 127.0.0.1:8765 | Jarvis s'est arrêté au démarrage : lancez `./jarvis-console.sh` (ou `jarvis-console.bat`) pour voir l'erreur, ou `tail -30 jarvis.log`. Cause fréquente sous Linux : PortAudio absent (`sudo apt install libportaudio2`) |
 | Page vide ou « erreur réseau » | Jarvis n'est pas lancé, ou le port 8765 est pris (`UI_PORT`) |

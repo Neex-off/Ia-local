@@ -52,6 +52,9 @@ MODELS = {
 }
 # Ordre du plus léger au plus lourd (pour dire « plus lourd / plus léger que l'actuel »).
 MODEL_ORDER = ["mini", "léger", "recherche", "standard", "puissant"]
+# Sans carte graphique (ni NVIDIA ni Apple Silicon), démarrer avec le plus petit modèle installé (mini, puis léger)
+# plutôt qu'avec MODEL, qui mettrait des minutes à répondre sur processeur. False pour forcer MODEL.
+CPU_AUTO_SMALL = True
 # Liste d'outils active (None = tous). Modifiée par switch_model.
 ACTIVE_TOOLS = None
 
