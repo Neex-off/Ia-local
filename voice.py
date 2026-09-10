@@ -84,11 +84,12 @@ def listen(
             rms = float(np.sqrt(np.mean(data ** 2)))
             if level_cb is not None:
                 level_cb(rms, speech_start is not None)
+            thr = threshold() if callable(threshold) else threshold  # seuil dynamique (anti-écho pendant que Jarvis parle)
 
             if speech_start is None:
                 pre_roll.append(data)
                 pre_roll = pre_roll[-6:]
-                if rms > threshold:
+                if rms > thr:
                     speech_start = now
                     last_voice = now
                     chunks.extend(pre_roll)
@@ -97,7 +98,7 @@ def listen(
                 continue
 
             chunks.append(data)
-            if rms > threshold:
+            if rms > thr:
                 last_voice = now
             if now - last_voice > silence_seconds:
                 break

@@ -70,6 +70,8 @@ class JarvisCore:
         self.mouth: Speaker | None = None
         self.voice_error = ""  # renseigné si la voix n'a pas pu se charger (Jarvis reste utilisable au clavier)
         self._last_said = ""   # dernière phrase dite, pour reconnaître son propre écho dans le micro
+        self._tts_recent: list[float] = []  # niveaux récents de la synthèse (≈ 300 ms) pour l'anti-écho
+        self._echo_gain: float | None = None  # part de la voix de Jarvis qui revient dans le micro (enceintes)
         self._typed: queue.Queue[str] = queue.Queue()
         self._stop_speech = threading.Event()
         self._interrupt_listen = threading.Event()
@@ -185,7 +187,14 @@ class JarvisCore:
         self.emit({"type": "level", "src": "mic", "v": rms, "speech": speech})
 
     def _tts_level(self, rms: float) -> None:
+        self._tts_recent = (self._tts_recent + [rms])[-6:]  # 6 blocs de 50 ms : couvre la latence enceintes -> micro
         self.emit({"type": "level", "src": "tts", "v": rms, "speech": rms > 0.005})
+
+    def _echo_threshold(self, base: float) -> float:
+        """Seuil du micro pendant que Jarvis parle : au moins `base`, et au-dessus de l'écho attendu de sa voix."""
+        if not config.ECHO_SUPPRESSION or self._echo_gain is None or not self._tts_recent:
+            return base
+        return max(base, self._echo_gain * max(self._tts_recent) * config.ECHO_MARGIN)
 
     def load(self) -> None:
         import tools
@@ -599,7 +608,15 @@ class JarvisCore:
         stop_listen = threading.Event()
         pause = threading.Event()
 
+        calib: list[float] = []  # rapport micro / synthèse mesuré au début de la phrase (on suppose que l'utilisateur se tait)
+
         def on_level(rms: float, speech: bool) -> None:
+            tts = max(self._tts_recent) if self._tts_recent else 0.0
+            if config.ECHO_SUPPRESSION and tts > 0.01 and len(calib) < 16 and not pause.is_set():
+                calib.append(rms / tts)
+                if len(calib) >= 8:
+                    g = sorted(calib)[len(calib) // 2]  # médiane : robuste à un clic ou un mot isolé
+                    self._echo_gain = g if self._echo_gain is None else 0.7 * self._echo_gain + 0.3 * g
             if speech and not pause.is_set() and not self._stop_speech.is_set():
                 pause.set()
 
@@ -607,7 +624,8 @@ class JarvisCore:
 
         def watcher() -> None:
             while not stop_listen.is_set() and not self._stop_speech.is_set():
-                audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen, threshold=threshold["v"])
+                audio = listen(wait_seconds=None, level_cb=on_level, stop_event=stop_listen,
+                               threshold=lambda: self._echo_threshold(threshold["v"]))
                 if stop_listen.is_set() or self._stop_speech.is_set():
                     break
                 heard = self.ears.transcribe(audio) if audio.size else ""

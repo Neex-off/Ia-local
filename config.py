@@ -247,6 +247,11 @@ TTS_TEMPERATURE = 0.6   # plus bas = voix plus stable, moins de dérive
 # Avec des enceintes (pas de casque), monte-le (5 à 8) ou mets BARGE_IN à False pour qu'il ne s'entende pas lui-même.
 BARGE_IN = True
 BARGE_IN_SENSITIVITY = 3.0
+# Anti-écho pour les ENCEINTES : pendant qu'il parle, Jarvis mesure combien de sa propre voix revient dans le micro
+# et relève le seuil de coupure d'autant (× ECHO_MARGIN). Il faut donc parler nettement plus fort que l'écho pour
+# le couper. Ce qu'il entend est aussi comparé à ce qu'il vient de dire : sa propre phrase est ignorée.
+ECHO_SUPPRESSION = True
+ECHO_MARGIN = 2.5
 
 # Détection de fin de phrase au micro.
 SILENCE_SECONDS = 1.2      # secondes de silence avant d'arrêter l'enregistrement

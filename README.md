@@ -164,7 +164,7 @@ Les compétences tierces (Anthropic, communauté) ne sont pas incluses dans ce d
 |---|---|
 | « Impossible de joindre Ollama » | lancez Ollama (icône, ou `ollama serve`) puis relancez Jarvis |
 | Il ne m'entend pas | vérifiez le micro par défaut du système ; montez `SILENCE_THRESHOLD` si la pièce est bruyante, baissez-le s'il ne réagit pas |
-| Il se coupe tout seul avec des enceintes | montez `BARGE_IN_SENSITIVITY` (5 à 8) ou mettez `BARGE_IN = False` |
+| Il se coupe tout seul avec des enceintes | l'anti-écho (`ECHO_SUPPRESSION`) mesure sa propre voix dans le micro et relève le seuil ; si ça ne suffit pas, montez `ECHO_MARGIN` (4) ou `BARGE_IN_SENSITIVITY` (5 à 8), ou mettez `BARGE_IN = False` |
 | Réponses très lentes (une minute) | la carte graphique est pleine et le modèle déborde sur le processeur : Jarvis l'affiche en rouge au démarrage. Fermez les applis gourmandes (jeu, LM Studio, vidéos), relancez, ou « passe au modèle léger ». Sans carte graphique, Jarvis choisit tout seul le modèle mini (`CPU_AUTO_SMALL`) |
 | La page reste sur « Initialisation » | seul le modèle de langage est nécessaire pour écrire : la page passe à « Prêt » dès qu'il est là, la voix se charge ensuite en arrière-plan (4 Go à télécharger la première fois, suivez `jarvis.log`). Si la voix échoue, un message rouge l'explique et le clavier marche |
 | « Ce site est inaccessible » sur 127.0.0.1:8765 | Jarvis s'est arrêté au démarrage : lancez `./jarvis-console.sh` (ou `jarvis-console.bat`) pour voir l'erreur, ou `tail -30 jarvis.log`. Cause fréquente sous Linux : PortAudio absent (`sudo apt install libportaudio2`) |
