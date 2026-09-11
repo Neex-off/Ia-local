@@ -82,6 +82,10 @@ Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --
 | « Lis mes mails non lus » | ouvre votre messagerie, regarde l'écran et vous lit les nouveaux messages |
 | « Baisse le son de Spotify » | règle le volume de cette application seulement (Windows) |
 | « Ferme Discord » | ferme l'application et vérifie qu'elle l'est vraiment |
+| « Range mon dossier Téléchargements » | ouvre la boîte fichiers et trie par type |
+| « Combien d'espace libre sur mes disques ? » | ouvre la boîte machine et répond |
+| « Arrête le programme qui rame » | liste les programmes et arrête celui qui bloque |
+| « Résume-moi ce PDF » | lit PDF, Word ou Excel |
 | « J'ai fait pecs aujourd'hui, développé couché 4 fois 8 à 80 kilos » | note la séance dans son journal et réagit |
 | « Qu'est-ce que j'ai fait à la salle cette semaine ? » | relit le journal |
 | (le soir, de lui-même) « Monsieur, comment s'est passée votre journée ? » | conscience : il prend des nouvelles et note ce que vous racontez |

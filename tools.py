@@ -1621,7 +1621,66 @@ def focus_window(title: str) -> str:
 
 
 # Liste passée au modèle. L'ordre n'a pas d'importance.
-TOOLS = [get_datetime, calculate, remember, recall, forget, research, learn, show_projects, hide_projects,
+# --------------------------------------------------------------------------
+# Boîtes à outils : des dizaines d'outils supplémentaires, chargés à la demande.
+# Les montrer tous en permanence noierait le modèle (chaque outil coûte du contexte).
+# --------------------------------------------------------------------------
+TOOLBOXES = {
+    "systeme": ("outils_systeme",
+                "programmes en cours et les arrêter, placer/épingler/réduire les fenêtres, presse-papiers, "
+                "luminosité, thème clair ou sombre, fond d'écran, barre des tâches, ne pas déranger, "
+                "verrouiller la session, mettre en veille, éteindre ou redémarrer"),
+    "fichiers": ("outils_fichiers",
+                 "chercher un texte DANS les fichiers, doublons, gros fichiers, fichiers inutilisés, ranger un "
+                 "dossier, créer/renommer/copier/déplacer, corbeille, renommage en masse, zip et dézip, comparer, "
+                 "imprimer, lire un PDF/Word/Excel, fusionner ou découper un PDF, convertir/compresser une image, "
+                 "supprimer les métadonnées"),
+    "machine": ("outils_machine",
+                "espace disque, santé des disques, nettoyage des temporaires, état du matériel et températures, "
+                "pilotes, réseau et adresse IP, débit internet, ports ouverts, Wi-Fi, appareils du réseau local, "
+                "bilan de sécurité et antivirus, programmes au démarrage, services Windows, Windows Update, "
+                "point de restauration"),
+    "dev": ("outils_dev",
+            "git (état, historique, branches, changer de branche, commit, push, annuler), secrets oubliés dans le "
+            "code, lancer un projet, logiciels installés (installer, désinstaller, mettre à jour), pip/npm/cargo, "
+            "Docker, modèles d'IA installés"),
+}
+_TOOLBOX_TOOLS: dict[str, list] = {}   # domaine -> fonctions, rempli au démarrage
+_OPENED: list[str] = []                # boîtes actuellement montrées au modèle (2 au maximum)
+
+
+def open_toolbox(domain: str) -> str:
+    """Ouvre une boîte à outils pour débloquer des dizaines d'outils supplémentaires. À appeler DÈS que la demande sort de ta panoplie de base, avant de dire que tu ne peux pas.
+
+    Args:
+        domain: "systeme" (fenêtres, processus, écran, énergie), "fichiers" (contenu, rangement, PDF, images), "machine" (disques, réseau, matériel, sécurité, Windows), "dev" (git, projets, logiciels, Docker). Ou "liste" pour voir les domaines.
+    """
+    d = _norm_app(domain).replace(" ", "")
+    alias = {"système": "systeme", "system": "systeme", "fenetres": "systeme", "ecran": "systeme",
+             "fichier": "fichiers", "documents": "fichiers", "images": "fichiers", "pdf": "fichiers",
+             "materiel": "machine", "reseau": "machine", "disque": "machine", "disques": "machine",
+             "securite": "machine", "windows": "machine", "git": "dev", "logiciels": "dev", "code": "dev"}
+    d = alias.get(d, d)
+    if d in ("liste", "", "?"):
+        return "Boîtes disponibles :\n" + "\n".join(f"- {n} : {desc}" for n, (_m, desc) in TOOLBOXES.items())
+    if d not in TOOLBOXES:
+        return (f"Boîte inconnue : « {domain} ». Choisis parmi : " + ", ".join(TOOLBOXES)
+                + ".\n" + "\n".join(f"- {n} : {desc}" for n, (_m, desc) in TOOLBOXES.items()))
+    if d not in _TOOLBOX_TOOLS:
+        return f"La boîte « {d} » n'a pas pu être chargée sur cet ordinateur."
+    if d in _OPENED:
+        _OPENED.remove(d)
+    _OPENED.append(d)
+    del _OPENED[:-2]  # deux boîtes ouvertes au maximum, pour ne pas noyer le modèle
+    noms = []
+    for fn in _TOOLBOX_TOOLS[d]:
+        premiere = (fn.__doc__ or "").strip().splitlines()[0] if fn.__doc__ else ""
+        noms.append(f"- {fn.__name__} : {premiere[:95]}")
+    return (f"Boîte « {d} » ouverte, tu peux maintenant appeler ces outils directement :\n" + "\n".join(noms)
+            + "\nUtilise-les tout de suite pour répondre à la demande.")
+
+
+TOOLS = [open_toolbox, get_datetime, calculate, remember, recall, forget, research, learn, show_projects, hide_projects,
          show_agenda, hide_agenda, agenda_month, add_event, remove_event, list_events, journal_add, journal_read,
          list_models, switch_model, switch_voice, list_skills, use_skill,
          search_files, open_file, list_files, read_file, write_file, create_pdf, create_docx,
@@ -1632,8 +1691,33 @@ TOOLS = [get_datetime, calculate, remember, recall, forget, research, learn, sho
 TOOL_MAP = {fn.__name__: fn for fn in TOOLS}
 
 
+def _load_toolboxes() -> None:
+    """Importe les boîtes à outils au démarrage : leurs fonctions deviennent appelables tout de suite,
+    mais ne sont montrées au modèle qu'une fois la boîte ouverte par open_toolbox."""
+    import importlib
+
+    for nom, (module, _desc) in TOOLBOXES.items():
+        try:
+            m = importlib.import_module(module)
+            _TOOLBOX_TOOLS[nom] = list(m.TOOLS)
+            TOOL_MAP.update({fn.__name__: fn for fn in m.TOOLS})
+        except Exception as exc:  # noqa: BLE001
+            print(f"[outils] boîte « {nom} » indisponible : {exc}", file=sys.stderr)
+
+
+_load_toolboxes()
+
+
+def toolbox_summary() -> str:
+    """Une ligne par boîte, pour le prompt système : le modèle sait ce qu'il peut débloquer."""
+    return "\n".join(f"  open_toolbox(\"{n}\") : {desc}" for n, (_m, desc) in TOOLBOXES.items()
+                     if n in _TOOLBOX_TOOLS)
+
+
 def active_tools() -> list:
-    """Outils à présenter au modèle actif (liste réduite pour les petits modèles)."""
-    if not config.ACTIVE_TOOLS:
-        return TOOLS
-    return [fn for fn in TOOLS if fn.__name__ in config.ACTIVE_TOOLS]
+    """Outils présentés au modèle : la panoplie de base, plus les boîtes à outils ouvertes."""
+    base = TOOLS if not config.ACTIVE_TOOLS else [fn for fn in TOOLS if fn.__name__ in config.ACTIVE_TOOLS]
+    extra = []
+    for nom in _OPENED:
+        extra += _TOOLBOX_TOOLS.get(nom, [])
+    return base + extra

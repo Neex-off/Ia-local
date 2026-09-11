@@ -11,3 +11,6 @@ pystray
 pillow
 pycaw; sys_platform == "win32"
 psutil
+pypdf
+openpyxl
+send2trash

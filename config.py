@@ -15,7 +15,7 @@ MODELS = {
         "vram": "2 Go (tourne aussi sur processeur seul, vieux PC sans carte graphique)",
         "plus": "minuscule : 2 Go, démarre en une seconde, fonctionne sans carte graphique ; discuter, heure, calculs, ouvrir une appli ou un site, volume, musique, mémoire, agenda",
         "moins": "pas d'écran, pas de fichiers, pas de recherche web, pas de documents ni de sites, ne voit pas les images, raisonnement limité",
-        "tools": ["get_datetime", "calculate", "open_app", "open_site", "change_volume", "media_control",
+        "tools": ["open_toolbox", "get_datetime", "calculate", "open_app", "open_site", "change_volume", "media_control",
                   "show_agenda", "hide_agenda", "add_event", "list_events", "journal_add", "journal_read",
                   "remember", "recall", "switch_model", "switch_voice", "list_models"],
     },
@@ -24,7 +24,7 @@ MODELS = {
         "vram": "6 Go",
         "plus": "beaucoup plus léger pour la carte graphique et la mémoire, chargement rapide, bon pour discuter, résumer, expliquer, rédiger un texte court",
         "moins": "peu fiable avec les outils : pas de contrôle de l'écran, pas de recherche de fichiers ni de sites web complexes, raisonnement plus faible, réponses parfois approximatives",
-        "tools": ["get_datetime", "calculate", "open_app", "open_site", "change_volume", "app_volume", "media_control",
+        "tools": ["open_toolbox", "get_datetime", "calculate", "open_app", "open_site", "change_volume", "app_volume", "media_control",
                   "show_projects", "hide_projects", "show_agenda", "hide_agenda", "agenda_month", "add_event", "list_events", "journal_add", "journal_read",
                   "remember", "recall", "switch_model", "switch_voice", "list_models"],
     },
@@ -33,7 +33,7 @@ MODELS = {
         "vram": "5 Go",
         "plus": "léger et rapide, très fiable pour discuter et chercher sur internet (météo, actualité, questions, lecture et résumé de pages web), vérifie ses sources",
         "moins": "pas de contrôle de l'écran, pas de fichiers, pas de création de documents ni de sites, ne voit pas les images",
-        "tools": ["get_datetime", "calculate", "web_search", "fetch_url", "open_site", "open_url", "research", "learn",
+        "tools": ["open_toolbox", "get_datetime", "calculate", "web_search", "fetch_url", "open_site", "open_url", "research", "learn",
                   "show_projects", "hide_projects", "remember", "recall", "journal_add", "journal_read", "switch_model", "switch_voice", "list_models"],
     },
     "standard": {
@@ -195,7 +195,7 @@ LANGUAGE = "fr"
 
 # En mode vocal, Whisper et Chatterbox occupent déjà ~5 Go de VRAM : on réduit le contexte
 # du modèle de langage pour que les trois tiennent dans 16 Go avec de la marge.
-VOICE_NUM_CTX = 16384  # gemma4 : le cache 16K coûte très peu de VRAM (attention à fenêtre glissante)
+VOICE_NUM_CTX = 24576  # 24K : le prompt système et les boîtes à outils prennent ~12K, il faut de la place pour la conversation
 
 # Nom de l'assistant : dire ce mot au micro le réveille (« Bonjour Jarvis »).
 ASSISTANT_NAME = "Jarvis"
@@ -297,6 +297,12 @@ Tu disposes d'outils. Utilise-les quand ils sont utiles, pas systématiquement :
 - MAILS : « lis mes mails non lus » -> check_app("mails") ; dans la liste Gmail, les mails NON LUS sont ceux en gras / marqués non lus dans les éléments ; clique sur le premier (click_element avec son objet), see_screen, lis l'expéditeur, l'objet et le contenu, résume-le ; reviens à la liste (press_keys("alt+left") ou click_element("Boîte de réception")) et passe au suivant, 3 mails maximum sauf demande. Termine par un résumé global. Pour répondre ou archiver, utilise les boutons visibles (click_element) puis type_text.
 - RÉGLAGES D'UNE APPLI : « change tel paramètre dans Spotify / Discord / Windows » -> check_app(appli), puis navigue : click_element("Paramètres") ou press_keys("ctrl+,") selon l'appli, see_screen, click_element sur la rubrique, ajuste (click_element / type_text / press_keys), see_screen pour vérifier, et dis ce que tu as changé. Tu PEUX manipuler n'importe quelle application ainsi.
 - APPRENDRE : tu PEUX apprendre par toi-même. Quand l'utilisateur te demande de te renseigner, d'apprendre ou de te documenter sur un sujet (« renseigne-toi sur… », « apprends… », « documente-toi sur… »), appelle research(sujet), lis la matière, résume ce que tu as compris en quelques phrases, puis enregistre-le avec learn(sujet, résumé, sources). Ne dis jamais que tu ne peux pas apprendre ou chercher : tu le peux, avec ces outils. Ce que tu as appris est relu au démarrage et retrouvable avec recall.
+- BOÎTES À OUTILS : tes outils de base ne sont qu'une partie de ce que tu sais faire. Des dizaines d'autres attendent dans quatre boîtes, que tu ouvres avec open_toolbox(domaine) :
+    open_toolbox("systeme") : programmes en cours, arrêter un programme bloqué, placer ou épingler les fenêtres, presse-papiers, luminosité, thème clair ou sombre, fond d'écran, ne pas déranger, verrouiller, veille, éteindre.
+    open_toolbox("fichiers") : chercher un texte DANS les fichiers, doublons, gros fichiers, ranger un dossier, corbeille, renommage en masse, zip, lire un PDF ou un Word ou un Excel, fusionner un PDF, convertir et compresser des images.
+    open_toolbox("machine") : espace disque, santé des disques, nettoyage, matériel et températures, pilotes, réseau, débit internet, Wi-Fi, sécurité et antivirus, programmes au démarrage, services, Windows Update, point de restauration.
+    open_toolbox("dev") : git, secrets dans le code, lancer un projet, installer ou désinstaller un logiciel, mises à jour, pip et npm, Docker, modèles d'IA installés.
+  Dès qu'une demande sort de ta panoplie de base, ouvre la boîte correspondante AVANT de dire que tu ne sais pas faire. Ne dis jamais « je n'ai pas cet outil » sans avoir essayé open_toolbox. Tu peux l'ouvrir et t'en servir dans la même réponse.
 - MÉTHODE POUR UNE TÂCHE VAGUE : l'utilisateur ne connaît pas forcément le nom exact des applications. Réfléchis d'abord à la voie : quelle application ou quel réglage permet de faire ça sur Windows ? Si tu ne sais pas, cherche sur le web (« comment vérifier … sous Windows 11 »). Si open_app / see_screen / focus_window échoue avec un nom, ne t'arrête pas : list_apps("mot-clé") donne les vrais noms installés, list_windows() les fenêtres ouvertes, et essaie les synonymes (« NVIDIA App » = « GeForce Experience », « Paramètres » = « Settings »).
 - SAVOIR-FAIRE WINDOWS : pilotes / mise à jour carte graphique NVIDIA -> open_app("NVIDIA App") puis see_screen, onglet « Pilotes » (ou open_url("https://www.nvidia.com/fr-fr/drivers/")) ; carte AMD -> « AMD Software: Adrenalin Edition » ; mises à jour Windows -> open_url("ms-settings:windowsupdate") ; son -> open_url("ms-settings:sound") ; Bluetooth -> open_url("ms-settings:bluetooth") ; Wi-Fi -> open_url("ms-settings:network-wifi") ; écran -> open_url("ms-settings:display") ; applis installées -> open_url("ms-settings:appsfeatures") ; démarrage -> open_url("ms-settings:startupapps") ; stockage -> open_url("ms-settings:storagesense") ; gestionnaire de périphériques -> run_command("devmgmt.msc") ; gestionnaire des tâches -> run_command("taskmgr") ; version Windows / matériel -> run_command("systeminfo") ou run_command("nvidia-smi") pour la carte NVIDIA (version du pilote incluse).
 - MANIPULATIONS VISIBLES : l'utilisateur regarde l'écran pendant que tu agis. Avant chaque geste, dis-le en trois ou quatre mots (« J'ouvre l'onglet Pilotes. », « Je clique sur Vérifier les mises à jour. »), puis fais-le, puis dis ce que tu vois. Un geste = un clic sur un élément VISIBLE de la capture (click_element sur son nom exact tel qu'il apparaît, ou click sur ses coordonnées). Pour vérifier une mise à jour dans une application, il faut OUVRIR sa page « Pilotes » / « Mises à jour » et la LIRE ; une version lue ailleurs (nvidia-smi) ne dit pas s'il y a une mise à jour disponible.
