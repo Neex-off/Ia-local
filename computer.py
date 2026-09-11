@@ -428,21 +428,68 @@ def foreground_title() -> str:
         return ""
 
 
+_GENERIC_WORDS = {"studio", "app", "launcher", "client", "desktop", "player", "gx", "browser", "pro", "free", "the", "le", "la"}
+
+
+def _name_words(name: str) -> list[str]:
+    """Mots significatifs d'un nom d'application : « OBS Studio » -> ["obs"] (+ "studio" en secours)."""
+    words = [w for w in re.split(r"[^a-z0-9]+", _norm(name)) if len(w) >= 2]
+    strong = [w for w in words if w not in _GENERIC_WORDS and len(w) >= 3]
+    return strong or words
+
+
+def processes_matching(name: str) -> list[tuple[int, str]]:
+    """Processus dont l'exécutable ressemble au nom : « Opera GX » -> opera.exe, « OBS Studio » -> obs64.exe."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    keys = _name_words(name)
+    out = []
+    for p in psutil.process_iter(["pid", "name"]):
+        exe = (p.info.get("name") or "").lower()
+        if exe and any(k in exe for k in keys):
+            out.append((p.info["pid"], exe))
+    return out
+
+
 def windows_matching(title: str) -> list:
-    """Fenêtres visibles dont le titre contient `title` (objets pywinauto, Windows)."""
+    """Fenêtres visibles correspondant à un nom d'application (objets pywinauto, Windows).
+
+    Trois passes : le titre contient le nom tel quel (« Discord ») ; puis tous les mots du nom dans n'importe quel
+    ordre (« Opera GX » -> « GX Corner – Opera ») ; puis les fenêtres du processus dont l'exécutable porte le nom
+    (« OBS Studio » -> obs64.exe, dont la fenêtre s'appelle « OBS 32.0.2 - Profil… »)."""
     if not IS_WINDOWS:
         return []
     from pywinauto import Desktop
 
     want = _norm(title)
-    out = []
+    if not want:
+        return []
+    wins = []
     for w in Desktop(backend="win32").windows():
         try:
             t = w.window_text()
-            if t and want and want in _norm(t) and w.is_visible():
-                out.append(w)
+            if t and w.is_visible():
+                wins.append((w, _norm(t)))
         except Exception:  # noqa: BLE001
             continue
+    out = [w for w, t in wins if want in t]
+    if out:
+        return out
+    words = [w for w in re.split(r"[^a-z0-9]+", want) if len(w) >= 2]
+    if len(words) > 1:
+        out = [w for w, t in wins if all(re.search(r"\b" + re.escape(x) + r"\b", t) for x in words)]
+        if out:
+            return out
+    pids = {pid for pid, _exe in processes_matching(title)}
+    if pids:
+        for w, t in wins:
+            try:
+                if w.process_id() in pids and t != "program manager":
+                    out.append(w)
+            except Exception:  # noqa: BLE001
+                continue
     return out
 
 

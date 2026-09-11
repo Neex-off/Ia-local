@@ -656,7 +656,20 @@ def close_app(name: str, force: bool = False) -> str:
             pids += p
         pids = sorted(set(pids))
         if not closed and not pids:
-            return f"Aucune fenêtre ouverte pour « {name} » : l'application n'est pas à l'écran (peut-être déjà fermée, ou seulement en arrière-plan). {list_windows()}"
+            procs = computer.processes_matching(name)
+            if procs and force:
+                for pid, exe in procs:
+                    sp.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+                time.sleep(1)
+                left = computer.processes_matching(name)
+                return (f"Processus arrêté de force : {', '.join(sorted({e for _p, e in procs}))}." if not left
+                        else f"PAS FERMÉ : {', '.join(sorted({e for _p, e in left}))} résiste (droits administrateur ?).")
+            if procs:
+                return (f"PAS FERMÉ. Aucune fenêtre visible pour « {name} », mais le programme tourne en arrière-plan : "
+                        f"{', '.join(sorted({e for _p, e in procs}))}. Dis à l'utilisateur qu'il tourne encore et propose de forcer "
+                        f"(close_app(\"{name}\", force=True)).")
+            return (f"PAS FERMÉ car introuvable : aucune fenêtre ni processus pour « {name} ». Soit l'application n'était pas lancée, "
+                    f"soit son nom est différent : {list_windows()}")
         time.sleep(2.5)
         still = [w.window_text() for t in titles_to_try for w in computer.windows_matching(t)]
         if still:
@@ -696,7 +709,7 @@ def close_app(name: str, force: bool = False) -> str:
                 alive.append(pid)
         if still:
             if not force:
-                return f"J'ai envoyé la fermeture à {', '.join(closed)}, mais une fenêtre est encore ouverte : {', '.join(still)} (une boîte de dialogue « Enregistrer ? » peut bloquer : see_screen). Dis « force » pour arrêter le processus."
+                return f"PAS FERMÉ : j'ai envoyé la fermeture à {', '.join(closed)}, mais une fenêtre est encore ouverte : {', '.join(still)} (une boîte de dialogue « Enregistrer ? » ou « Fermer tous les onglets ? » peut bloquer : see_screen). Dis-le à l'utilisateur et propose de forcer (close_app(nom, force=True))."
         if alive and force:
             for pid in alive:
                 sp.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
