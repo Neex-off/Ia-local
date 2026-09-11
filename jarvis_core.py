@@ -212,7 +212,19 @@ class JarvisCore:
                                        + "\n\n" + memory.prompt_section() + "\n\n" + memory.knowledge_prompt_section())
         self.emit({"type": "loading", "step": f"Modèle de langage {self.model}", "done": False})
         wanted = self.model
-        self.model = ensure_model(wanted)
+        try:
+            from agent import OllamaUnavailable, wait_for_ollama
+
+            wait_for_ollama(90, on_wait=lambda left: self.emit(
+                {"type": "loading", "step": f"En attente d'Ollama (il démarre avec Windows)… {left} s", "done": False}))
+            self.model = ensure_model(wanted)
+        except OllamaUnavailable as exc:
+            # Ne pas rester bloqué sur l'écran de chargement : la page l'explique, et on retentera au prochain démarrage.
+            self.emit({"type": "loading", "step": "Ollama introuvable", "done": True})
+            self.emit({"type": "error", "text": str(exc)})
+            self._set_state("idle")
+            print(f"[jarvis] {exc}", flush=True)
+            return
         if self.model != wanted:  # modèle configuré pas encore téléchargé : on démarre avec celui qui est là
             tier = model_tier(self.model)
             config.ACTIVE_TOOLS = config.MODELS[tier].get("tools") if tier else None

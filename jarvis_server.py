@@ -63,7 +63,10 @@ def emit(event: dict) -> None:
         elif event["type"] in ("user", "assistant", "error"):
             print(f"{time.strftime('%H:%M:%S')} [{event['type']}] {str(event.get('text', ''))[:300]}", flush=True)
     if loop is not None and events is not None:
-        loop.call_soon_threadsafe(events.put_nowait, event)
+        try:
+            loop.call_soon_threadsafe(events.put_nowait, event)
+        except RuntimeError:  # boucle fermée (serveur arrêté) : l'événement est juste perdu
+            pass
 
 
 def gpu_stats() -> dict | None:
@@ -259,7 +262,21 @@ def lower_priority() -> None:
         pass
 
 
+def already_running() -> bool:
+    """Un autre Jarvis écoute déjà sur le port ? (double clic, lancement automatique + manuel…)"""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        return s.connect_ex((config.UI_HOST, config.UI_PORT)) == 0
+
+
 if __name__ == "__main__":
+    if already_running():
+        print(f"[jarvis] Jarvis tourne déjà sur {URL} : cette deuxième instance s'arrête.", flush=True)
+        if "--no-browser" not in sys.argv:
+            webbrowser.open(URL)
+        sys.exit(0)
     lower_priority()
     print(f"[jarvis] démarrage {time.strftime('%d/%m/%Y %H:%M:%S')}", flush=True)
     try:

@@ -67,6 +67,40 @@ def cpu_only_choice(model: str, names: set[str]) -> str | None:
     return None
 
 
+class OllamaUnavailable(RuntimeError):
+    """Ollama ne répond pas (pas lancé, ou encore en train de démarrer avec Windows)."""
+
+
+def wait_for_ollama(seconds: float = 90, on_wait=None) -> set[str]:
+    """Attend qu'Ollama réponde (au démarrage du PC il met parfois 10 à 30 s), en essayant de le lancer
+    s'il ne tourne pas. Renvoie les noms des modèles installés. Lève OllamaUnavailable sinon."""
+    import subprocess
+    import time as _time
+
+    deadline = _time.time() + seconds
+    launched = False
+    last = ""
+    while True:
+        try:
+            return {m.model for m in ollama.list().models}
+        except Exception as exc:  # noqa: BLE001
+            last = str(exc)
+        if not launched:
+            launched = True
+            try:  # « ollama serve » : sans effet s'il tourne déjà, le lance sinon (Windows, Mac, Linux)
+                subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            except Exception:  # noqa: BLE001
+                pass
+        if _time.time() > deadline:
+            raise OllamaUnavailable(f"Impossible de joindre Ollama après {seconds:.0f} s : {last}. "
+                                    "Lance Ollama (icône près de l'horloge, ou « ollama serve ») puis relance Jarvis.")
+        if on_wait is not None:
+            on_wait(int(deadline - _time.time()))
+        console.print("[yellow]Ollama ne répond pas encore, nouvel essai…[/yellow]")
+        _time.sleep(2)
+
+
 def ensure_model(model: str, fallback: bool = True) -> str:
     """Vérifie qu'Ollama répond et renvoie le modèle à utiliser.
 
@@ -74,12 +108,7 @@ def ensure_model(model: str, fallback: bool = True) -> str:
     (le léger d'abord) pour pouvoir tester tout de suite pendant qu'un autre se télécharge.
     Sinon, télécharge `model`.
     """
-    try:
-        names = {m.model for m in ollama.list().models}
-    except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Impossible de joindre Ollama : {exc}[/red]")
-        console.print("Lance Ollama (l'icône dans la barre des tâches) puis réessaie.")
-        sys.exit(1)
+    names = wait_for_ollama()
 
     def present(m: str) -> bool:
         return m in names or f"{m}:latest" in names
@@ -309,7 +338,11 @@ def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, 
 
 def main() -> None:
     model = sys.argv[1] if len(sys.argv) > 1 else config.MODEL
-    model = ensure_model(model)
+    try:
+        model = ensure_model(model)
+    except OllamaUnavailable as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(1)
     file_index.get().start_background()  # index des fichiers du PC, sans bloquer
 
     import tools as _tools

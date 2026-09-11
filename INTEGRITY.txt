@@ -1,5 +1,5 @@
 Ia-local (Jarvis) — manifeste d'intégrité — Copyright (c) 2026 Neexx (Nixovel) — https://github.com/Neex-off/Ia-local
-Version publiée le 10/09/2026. Empreintes SHA-256 de chaque fichier de l'original.
+Version publiée le 11/09/2026. Empreintes SHA-256 de chaque fichier de l'original.
 Toute différence sur un fichier ci-dessous signale une copie modifiée (la modification doit alors être
 déclarée, voir LICENSE article 3). Ce fichier fait partie de la licence et ne doit pas être retiré.
 
@@ -12,10 +12,10 @@ déclarée, voir LICENSE article 3). Ce fichier fait partie de la licence et ne 
 8b1605dd6e16d773ca8ee334012c0f977cc1584b0b808d76695129eaa7ac7fd6  .gitignore
 4ce2d39a42896e41196d7139210b882c633d0ca20a09ee7900d449bbdfa4561f  .windsurfrules
 263e77a3f80c2ee73f0ab4890728ada036a3bc76096a58448eb16a2bec6bf387  agenda.py
-c62b43d1da9aaf20ad230746f5e0298d1e0bac99f126ffc23dfaffc09b2bf230  agent.py
+a8010c623ccb424ab0d94b2dc8adad3339883c30701e4927f741a94991aceb2f  agent.py
 df2c98d609e1caf8412b59cfb98bf5a8c2eb0fcb55d15b95bd4a05afbe81263a  agent_vocal.py
 4ce2d39a42896e41196d7139210b882c633d0ca20a09ee7900d449bbdfa4561f  AGENTS.md
-10811c2a2c29c1690df5c983624df45ae75a14e3ff24c24a40b33ef5f4631810  AUTHORS
+1359edecaf0f229b724ec7f8269a0da0c628e6ce57ca884827b7e456d42f4ac2  AUTHORS
 4ce2d39a42896e41196d7139210b882c633d0ca20a09ee7900d449bbdfa4561f  CLAUDE.md
 e48829d082b731af7d41d7b4b24b1f5468bf5e86af9d7c84e5454bfe7f91fdf3  computer.py
 0338b7f4f597be2a074fd39cee546bcba492e5ced2058c81554831cfd656be0e  config.py
@@ -30,8 +30,8 @@ de80ae039094845fc10a9727c577ecdc773a7e44324d8487453b58941ea7ab5c  install.sh
 2d281b66a851ff7c3412c94611b2867f825a9a5af322ff59c4c1dd91be07f0fc  jarvis-console.sh
 a486ef5c09c159b936f4e89fee17ba394cf0a6cf89dbe108f8f2ec587c2ba1c4  jarvis.bat
 135e80af44db185b8f5da236dbd68d0f846f6de892200d14d6ed2c6f7bba37c8  jarvis.sh
-61935004f85df34049230166d9077af1ffb7c26940567daab74890d0f3ddc01e  jarvis_core.py
-de5acece9a23cbcd7679adf393d15c3879f2e46a65c69556979fb2b017faee04  jarvis_server.py
+6fff7641c54736c1c67fbcd3bf1633dadc4918ebad769ad6747136ad0ce6ff5e  jarvis_core.py
+8f875db03753c0dbd50cf1436a6b36bf3d838b0b2a40f08264c5027617f638a5  jarvis_server.py
 f12aec75c6e37755dbc6832ec14c13cddeb27d689723ac2321282aaa3afd82bd  journal.py
 83c0bb353140db8b0bb4e0a668e970417210e6579c56105b6db81c5083a33d6a  lancer.bat
 2e18a7ccc4caac43db34399f0110fff53fdb1cc7ef2c5c88f16b555f93bce237  LICENSE
@@ -39,7 +39,7 @@ a9d6a45fdc2b4dc70e95ac8c5168c1d958229715b37f41310e62c33e18bea693  memory.py
 af9c64b3d3a6dc0647fada0ce39728075b0489f7843e3518cca632d4e17c0369  NOTICE-IA.md
 2b06c441a3c5ec2f8bfadb9806fb27317005298c0758d6db4b0e7a40755c61e8  parler.bat
 54f7ae804ee2103ab9a43c85081b39f07800d311a50b922640701106ae05cefb  projets.py
-e140fe0839097ecaed93236bec68ce07535ff05fb43fae9fc930a9b30e28e478  README.md
+b4f6b850e8c5718ab9d15a7ddc97494642c45ae7f0a1ef2d70343ba8105e4c89  README.md
 ae05683390ae14b55e446f0288ec2e93c1a318d7336e065caf04866a72a39576  requirements-voice.txt
 09b4b8789cf9a9fc40ca9b09c6294b55a4c77bad793ece67f6577b0b7b587c86  requirements.txt
 0b837d85c7f01f63a4f65327d322aece2b9db8e1d49ef0d02fc0f61c041f3350  skills/automatisation-ecran/SKILL.md
