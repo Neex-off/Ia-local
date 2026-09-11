@@ -77,6 +77,7 @@ Variantes Mac/Linux : `./install.sh --all` (tous les modèles), `./install.sh --
 | « Retiens que je préfère le café » | mémorise, pour toujours |
 | « Montre-moi les projets » | affiche vos projets, branches, dépôts GitHub |
 | « Passe au modèle léger » | change de modèle, conversation conservée |
+| « Voix naturelle » / « voix rapide » | Chatterbox (imite une voix, 1 à 3 s) ou Kokoro (0,1 s, par défaut) |
 | « Montre l'agenda », « ajoute dentiste jeudi à 15 h », « mois suivant » | calendrier à l'écran ; il vous prévient tout seul 30 puis 5 minutes avant |
 | « Lis mes mails non lus » | ouvre votre messagerie, regarde l'écran et vous lit les nouveaux messages |
 | « Baisse le son de Spotify » | règle le volume de cette application seulement (Windows) |
@@ -113,7 +114,7 @@ du catalogue déjà installé (le mini d'abord) et vous le dit. Sans carte graph
 `MODEL` est installé, pour ne pas attendre des minutes. Au démarrage et à chaque changement, le modèle est préchauffé :
 la première question répond en une seconde. Tout modèle Ollama compatible outils peut être ajouté au catalogue `MODELS`.
 
-Les modèles de voix (Whisper `large-v3-turbo` et Chatterbox multilingue, environ 4 Go) se téléchargent tout seuls
+Les modèles de voix (Whisper `large-v3-turbo`, Kokoro et Chatterbox multilingue, environ 4 Go) se téléchargent tout seuls
 au premier lancement.
 
 ---
@@ -144,7 +145,8 @@ Tout est dans **`config.py`**, commenté ligne par ligne :
 | `CHECKIN_HOUR` | heure à partir de laquelle il demande de lui-même comment s'est passée la journée (None = jamais) |
 | `MODEL`, `MODELS` | modèle de démarrage et catalogue |
 | `CPU_AUTO_SMALL` | sans carte graphique, démarre avec le plus petit modèle installé au lieu de `MODEL` |
-| `voix/ma_voix.wav` | déposez 10 secondes de voix : il l'imite (le cache `voix/cache/` se reconstruit tout seul) |
+| `TTS_ENGINE` | `kokoro` (réponse quasi instantanée) ou `chatterbox` (voix plus naturelle, imite `voix/ma_voix.wav`) |
+| `voix/ma_voix.wav` | avec Chatterbox : déposez 10 secondes de voix, il l'imite (le cache `voix/cache/` se reconstruit tout seul) |
 | `VOCAB_HINTS` | vos noms propres, pour la reconnaissance vocale |
 | `BARGE_IN_SENSITIVITY` | à monter si vous utilisez des enceintes |
 | `STREAM_SPEECH`, `SILENCE_SECONDS` | parole dès la première phrase générée ; délai de silence qui clôt votre phrase (0,8 s) |

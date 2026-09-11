@@ -214,6 +214,7 @@ class JarvisCore:
     def load(self) -> None:
         import tools
         tools.MODEL_SWITCHER = self.switch_model
+        tools.VOICE_SWITCHER = lambda engine: setattr(self, "_voice_after_turn", engine)
         tools.CURRENT_MODEL = self.model
         config.OPTIONS["num_ctx"] = config.VOICE_NUM_CTX
         config.THINK = config.VOICE_THINK
@@ -343,7 +344,8 @@ class JarvisCore:
         try:
             ears = Transcriber()
             ears.warmup()
-            mouth = Speaker()
+            from voice import make_speaker
+            mouth = make_speaker()
             mouth.warmup()
         except Exception as exc:  # noqa: BLE001
             self.voice_error = (f"Voix indisponible : {exc}. Jarvis reste utilisable au clavier ; "
@@ -649,6 +651,10 @@ class JarvisCore:
         if old or new:
             self._unload_after_turn = self._preload_after_turn = None
             self._swap_models(old, new)
+        engine = getattr(self, "_voice_after_turn", None)
+        if engine:
+            self._voice_after_turn = None
+            self._swap_voice(engine)
         self._deadline = time.time() + config.ACTIVE_SECONDS
         self._set_state("listening")
 
@@ -677,6 +683,32 @@ class JarvisCore:
                             call.function.arguments = {k: clean(v) if isinstance(v, str) else v for k, v in args.items()}
                 except Exception:  # noqa: BLE001
                     self.messages[i] = {"role": getattr(m, "role", "assistant"), "content": clean(getattr(m, "content", "") or "")}
+
+    def _swap_voice(self, engine: str) -> None:
+        """Change le moteur de synthèse (Kokoro rapide <-> Chatterbox naturelle) entre deux tours."""
+        from voice import make_speaker
+
+        self._say("Je change de voix, un instant.", interruptible=False)
+        self._set_state("thinking")
+        config.TTS_ENGINE = engine
+        t0 = time.time()
+        try:
+            mouth = make_speaker()
+            mouth.warmup()
+            old = self.mouth
+            self.mouth = mouth
+            mouth.preload(list(config.GREETINGS_WAKE) + [config.GREETING_START] + list(TOOL_CUES.values()))
+            try:
+                old.to_standby()  # libère la carte graphique
+            except Exception:  # noqa: BLE001
+                pass
+            print(f"[jarvis] voix : {engine} en {time.time() - t0:.1f}s", flush=True)
+            self.emit({"type": "heard", "text": f"Voix : {engine}", "for_me": True})
+            self._say("Voilà ma nouvelle voix, monsieur.", interruptible=False)
+        except Exception as exc:  # noqa: BLE001
+            self.emit({"type": "error", "text": f"changement de voix : {exc}"})
+            self._say("Je n'ai pas pu changer de voix, je garde celle-ci.", interruptible=False)
+        self._set_state("listening")
 
     def _swap_models(self, old: str | None, new: str | None) -> None:
         """Éteint l'ancien modèle puis charge le nouveau, en le disant à voix haute. Bloque la boucle : rien

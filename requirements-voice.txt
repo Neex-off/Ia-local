@@ -17,5 +17,7 @@ omegaconf
 pyautogui
 mss
 pyperclip
+kokoro>=0.9.4
+misaki[fr]>=0.9.4
 pywinauto; sys_platform == "win32"
 pygetwindow; sys_platform != "win32"

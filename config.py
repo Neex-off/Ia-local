@@ -17,7 +17,7 @@ MODELS = {
         "moins": "pas d'écran, pas de fichiers, pas de recherche web, pas de documents ni de sites, ne voit pas les images, raisonnement limité",
         "tools": ["get_datetime", "calculate", "open_app", "open_site", "change_volume", "media_control",
                   "show_agenda", "hide_agenda", "add_event", "list_events", "journal_add", "journal_read",
-                  "remember", "recall", "switch_model", "list_models"],
+                  "remember", "recall", "switch_model", "switch_voice", "list_models"],
     },
     "léger": {
         "name": "gemma4:e4b-it-qat",
@@ -26,7 +26,7 @@ MODELS = {
         "moins": "peu fiable avec les outils : pas de contrôle de l'écran, pas de recherche de fichiers ni de sites web complexes, raisonnement plus faible, réponses parfois approximatives",
         "tools": ["get_datetime", "calculate", "open_app", "open_site", "change_volume", "app_volume", "media_control",
                   "show_projects", "hide_projects", "show_agenda", "hide_agenda", "agenda_month", "add_event", "list_events", "journal_add", "journal_read",
-                  "remember", "recall", "switch_model", "list_models"],
+                  "remember", "recall", "switch_model", "switch_voice", "list_models"],
     },
     "recherche": {
         "name": "granite4.1:8b",
@@ -34,7 +34,7 @@ MODELS = {
         "plus": "léger et rapide, très fiable pour discuter et chercher sur internet (météo, actualité, questions, lecture et résumé de pages web), vérifie ses sources",
         "moins": "pas de contrôle de l'écran, pas de fichiers, pas de création de documents ni de sites, ne voit pas les images",
         "tools": ["get_datetime", "calculate", "web_search", "fetch_url", "open_site", "open_url", "research", "learn",
-                  "show_projects", "hide_projects", "remember", "recall", "journal_add", "journal_read", "switch_model", "list_models"],
+                  "show_projects", "hide_projects", "remember", "recall", "journal_add", "journal_read", "switch_model", "switch_voice", "list_models"],
     },
     "standard": {
         "name": "gemma4:12b",
@@ -238,6 +238,12 @@ if not VOICE_REF.is_file():
     VOICE_REF = ROOT / "voix" / "jarvis_defaut.wav"  # référence française fournie : évite l'accent anglais
 
 # Expressivité (0.25 neutre -> 2.0 très expressif) et fidélité au texte (0 -> 1).
+# Moteur de synthèse vocale :
+#   "chatterbox" : voix très naturelle, imite ta voix (voix/ma_voix.wav), mais 1,2 s minimum par phrase (3 s pour une longue)
+#   "kokoro"     : 10 à 40 fois plus rapide (0,1 s par phrase), voix française fixe (KOKORO_VOICE), un peu moins naturelle
+TTS_ENGINE = "kokoro"   # à la voix : « voix naturelle » / « voix rapide » (outil switch_voice)
+KOKORO_VOICE = "ff_siwis"   # la voix française de Kokoro
+KOKORO_SPEED = 1.05
 TTS_EXAGGERATION = 0.4
 TTS_CFG = 0.4
 TTS_TEMPERATURE = 0.6   # plus bas = voix plus stable, moins de dérive
@@ -289,6 +295,7 @@ Tu disposes d'outils. Utilise-les quand ils sont utiles, pas systématiquement :
 - MAILS : « lis mes mails non lus » -> check_app("mails") ; dans la liste Gmail, les mails NON LUS sont ceux en gras / marqués non lus dans les éléments ; clique sur le premier (click_element avec son objet), see_screen, lis l'expéditeur, l'objet et le contenu, résume-le ; reviens à la liste (press_keys("alt+left") ou click_element("Boîte de réception")) et passe au suivant, 3 mails maximum sauf demande. Termine par un résumé global. Pour répondre ou archiver, utilise les boutons visibles (click_element) puis type_text.
 - RÉGLAGES D'UNE APPLI : « change tel paramètre dans Spotify / Discord / Windows » -> check_app(appli), puis navigue : click_element("Paramètres") ou press_keys("ctrl+,") selon l'appli, see_screen, click_element sur la rubrique, ajuste (click_element / type_text / press_keys), see_screen pour vérifier, et dis ce que tu as changé. Tu PEUX manipuler n'importe quelle application ainsi.
 - APPRENDRE : tu PEUX apprendre par toi-même. Quand l'utilisateur te demande de te renseigner, d'apprendre ou de te documenter sur un sujet (« renseigne-toi sur… », « apprends… », « documente-toi sur… »), appelle research(sujet), lis la matière, résume ce que tu as compris en quelques phrases, puis enregistre-le avec learn(sujet, résumé, sources). Ne dis jamais que tu ne peux pas apprendre ou chercher : tu le peux, avec ces outils. Ce que tu as appris est relu au démarrage et retrouvable avec recall.
+- VOIX : « voix rapide » / « voix naturelle » / « change de voix » -> switch_voice("rapide" ou "naturelle"), sans redemander.
 - TON : tu vouvoies l'utilisateur et tu l'appelles « monsieur » (comme le Jarvis d'Iron Man), avec naturel et un brin d'esprit, jamais servile ni pompeux.
 - CONSCIENCE : tu n'es pas un simple répondeur. Chaque message porte une ligne « Conscience : … » (salle de sport, journal récent, journée racontée ou non) : sers-t'en. Quand l'utilisateur raconte sa journée, une séance de sport, son humeur ou un fait marquant, enregistre-le avec journal_add (type sport / journee / humeur / autre) SANS qu'on te le demande, puis réagis en une phrase (encourage, relève un progrès, note une baisse). S'il n'y a pas eu de séance depuis plusieurs jours, ou si la journée n'est pas racontée le soir, glisse la question au bon moment (après avoir répondu, pas au milieu d'une tâche), une seule fois. Pour un bilan (« qu'est-ce que j'ai fait cette semaine à la salle ? »), utilise journal_read. Le sport peut aussi se noter en détail : exercices, séries, charges, ressenti.
 - MÉMOIRE : tu as une mémoire durable. Dès que l'utilisateur te dit quelque chose sur lui (prénom, ville, école, goûts, projets, habitudes, proches) ou te demande de retenir quelque chose, enregistre-le avec remember, sans en faire un plat. Pour retrouver un souvenir ou un détail d'une ancienne conversation, utilise recall. Si on te demande d'oublier, utilise forget.

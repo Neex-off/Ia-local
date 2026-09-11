@@ -68,12 +68,45 @@ def _safe_path(path: str) -> Path:
     return target
 
 
+_online_cache: list = [0.0, True]  # [horodatage, résultat] : le test de connexion coûte jusqu'à 1,5 s, on le garde 30 s
+
+
 def _online(host: str = "1.1.1.1", port: int = 53, timeout: float = 1.5) -> bool:
+    if time.time() - _online_cache[0] < 30:
+        return _online_cache[1]
     try:
         socket.create_connection((host, port), timeout=timeout).close()
-        return True
+        ok = True
     except OSError:
-        return False
+        ok = False
+    _online_cache[:] = [time.time(), ok]
+    return ok
+
+
+def _ddg(query: str, max_results: int) -> list[dict]:
+    """Recherche web : moteur le plus rapide d'abord (Brave ~0,5 s), repli sur le choix automatique de ddgs."""
+    from ddgs import DDGS
+
+    for backend in ("brave", "google", "auto"):
+        try:
+            res = DDGS().text(query, max_results=max_results, backend=backend)
+            if res:
+                return res
+        except Exception:  # noqa: BLE001
+            continue
+    return []
+
+
+def _page_text(url: str, timeout: float = 6, min_line: int = 40) -> str:
+    """Texte lisible d'une page (sans menus, scripts…), vide si illisible."""
+    from bs4 import BeautifulSoup
+
+    resp = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0 (agent local)"})
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+    for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "aside"]):
+        tag.decompose()
+    return "\n".join(line.strip() for line in soup.get_text("\n").splitlines() if len(line.strip()) > min_line)
 
 
 OFFLINE_MSG = "Erreur : pas de connexion internet. Cet outil est indisponible hors ligne."
@@ -288,9 +321,7 @@ def web_search(query: str, max_results: int = 5) -> str:
     if not _online():
         return OFFLINE_MSG
     try:
-        from ddgs import DDGS
-
-        results = DDGS().text(query, max_results=max(1, min(int(max_results), 10)))
+        results = _ddg(query, max(1, min(int(max_results), 10)))
         if not results:
             return "Aucun résultat."
         lines = []
@@ -687,9 +718,7 @@ def open_site(name: str) -> str:
     if not _online():
         return OFFLINE_MSG
     try:
-        from ddgs import DDGS
-
-        results = DDGS().text(f"{name} site officiel", max_results=5) or DDGS().text(name, max_results=5)
+        results = _ddg(f"{name} site officiel", 5) or _ddg(name, 5)
         if not results:
             return f"Aucun site trouvé pour « {name} »."
         skip = ("wikipedia.", "youtube.com/watch", "facebook.com", "linkedin.com/posts", "x.com", "twitter.com")
@@ -769,38 +798,36 @@ def research(topic: str, max_pages: int = 3) -> str:
     if not _online():
         return OFFLINE_MSG
     try:
-        from bs4 import BeautifulSoup
-        from ddgs import DDGS
+        from concurrent.futures import ThreadPoolExecutor
 
-        results = DDGS().text(topic, max_results=8) or []
+        results = _ddg(topic, 8)
         if not results:
             return f"Aucun résultat web pour « {topic} »."
+        want = max(1, min(int(max_pages), 5))
+        cands = [r for r in results if r.get("href", "").startswith("http")
+                 and not r["href"].lower().endswith((".pdf", ".zip")) and "youtube.com" not in r["href"]][:want + 2]
+        # Les pages sont lues EN PARALLÈLE (6 s max chacune) : ~1,5 s au lieu de 4 à 10 s l'une après l'autre.
+        with ThreadPoolExecutor(max_workers=len(cands) or 1) as pool:
+            def grab(r):
+                try:
+                    return r, _page_text(r["href"])
+                except Exception:  # noqa: BLE001
+                    return r, ""
+            pages = list(pool.map(grab, cands))
         out = [f"Recherche « {topic} » : {len(results)} résultats.", ""]
         read = 0
-        for r in results:
-            url = r.get("href", "")
-            if read >= max(1, min(int(max_pages), 5)):
+        for r, text in pages:
+            if read >= want:
                 break
-            if not url.startswith("http") or url.lower().endswith((".pdf", ".zip")) or "youtube.com" in url:
+            if len(text) < 300:
                 continue
-            try:
-                resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (agent local)"})
-                resp.raise_for_status()
-                soup = BeautifulSoup(resp.text, "html.parser")
-                for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "aside"]):
-                    tag.decompose()
-                text = "\n".join(line.strip() for line in soup.get_text("\n").splitlines() if len(line.strip()) > 40)
-                if len(text) < 300:
-                    continue
-                out.append(f"=== Source {read + 1} : {r.get('title', '')} — {url}\n{text[:2500]}\n")
-                read += 1
-            except Exception:  # noqa: BLE001
-                continue
+            out.append(f"=== Source {read + 1} : {r.get('title', '')} — {r['href']}\n{text[:1800]}\n")  # 1 800 car. : l'essentiel, vite relu
+            read += 1
         if read == 0:
             out.append("Pages illisibles ; extraits des résultats :")
             out += [f"- {r.get('title', '')} : {r.get('body', '')} ({r.get('href', '')})" for r in results[:5]]
         out.append("Maintenant : résume en 3 à 8 phrases ce que tu as appris, puis enregistre-le avec learn(sujet, résumé, sources).")
-        return _truncate("\n".join(out), 9000)
+        return _truncate("\n".join(out), 6000)
     except Exception as exc:  # noqa: BLE001
         return f"Erreur de recherche : {exc}"
 
@@ -1033,6 +1060,26 @@ def list_events(days: int = 7) -> str:
 # Défini par jarvis_core / agent : fonction(nom_du_modele) qui applique le changement.
 MODEL_SWITCHER = None
 CURRENT_MODEL = config.MODEL
+VOICE_SWITCHER = None  # posé par jarvis_core : change le moteur de voix à la fin du tour
+
+
+def switch_voice(mode: str) -> str:
+    """Change la voix de Jarvis : "rapide" (Kokoro, répond quasi instantanément, voix française fixe) ou "naturelle" (Chatterbox, plus naturelle et imite une voix, mais 1 à 3 s avant de parler). À appeler quand l'utilisateur dit « voix rapide », « voix naturelle », « change de voix ».
+
+    Args:
+        mode: "rapide" ou "naturelle".
+    """
+    m = _norm_app(mode)
+    engine = "kokoro" if any(w in m for w in ("rapide", "kokoro", "vite", "instant")) else "chatterbox" if any(
+        w in m for w in ("naturel", "chatterbox", "belle", "clone", "imite")) else None
+    if engine is None:
+        return "Mode non compris : dis « voix rapide » ou « voix naturelle »."
+    if engine == config.TTS_ENGINE:
+        return f"La voix {mode} est déjà active."
+    if VOICE_SWITCHER is None:
+        return "Changement de voix indisponible en mode texte."
+    VOICE_SWITCHER(engine)
+    return f"Je passe à la voix {'rapide (Kokoro)' if engine == 'kokoro' else 'naturelle (Chatterbox)'} dès la fin de cette réponse."
 
 
 def _installed_models() -> set[str]:
@@ -1563,7 +1610,7 @@ def focus_window(title: str) -> str:
 # Liste passée au modèle. L'ordre n'a pas d'importance.
 TOOLS = [get_datetime, calculate, remember, recall, forget, research, learn, show_projects, hide_projects,
          show_agenda, hide_agenda, agenda_month, add_event, remove_event, list_events, journal_add, journal_read,
-         list_models, switch_model, list_skills, use_skill,
+         list_models, switch_model, switch_voice, list_skills, use_skill,
          search_files, open_file, list_files, read_file, write_file, create_pdf, create_docx,
          check_app, list_apps, open_app, close_app, open_site, open_url, run_command, web_search, fetch_url,
          see_screen, zoom_screen, click, click_element, move_mouse, drag, type_text, press_keys, scroll, wait,

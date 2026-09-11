@@ -262,6 +262,57 @@ def clean_for_speech(text: str) -> str:
     return text.strip()
 
 
+class KokoroSpeaker:
+    """Synthèse ultra-rapide (Kokoro 82M, ~0,1 s par phrase) : même interface que Speaker, voix française fixe."""
+
+    def __init__(self, voice: str | None = None):
+        import torch
+        from kokoro import KPipeline
+
+        self.voice = voice or config.KOKORO_VOICE
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.pipe = KPipeline(lang_code="f", device=self.device, repo_id="hexgrad/Kokoro-82M")
+        self.sr = 24000
+        self.voice_ref = f"kokoro-{self.voice}.wav"  # sert de clé de cache (fichier fictif)
+        self._lock = threading.Lock()
+
+    def _move(self, device: str) -> None:
+        try:
+            self.pipe.model.to(device)
+            self.device = device
+        except Exception:  # noqa: BLE001
+            pass
+
+    def to_standby(self) -> None:
+        self._move("cpu")  # 82 M de paramètres : reste rapide même sur processeur
+
+    def to_gpu(self) -> None:
+        import torch
+        if torch.cuda.is_available():
+            self._move("cuda")
+
+    def synthesize(self, sentence: str) -> np.ndarray:
+        import numpy as _np
+        with self._lock:
+            parts = [a for *_, a in self.pipe(sentence, voice=self.voice, speed=config.KOKORO_SPEED)]
+        if not parts:
+            return _np.zeros(int(self.sr * 0.2), dtype="float32")
+        return _np.concatenate([p.numpy() if hasattr(p, "numpy") else _np.asarray(p) for p in parts]).astype("float32")
+
+    def warmup(self) -> None:
+        self.synthesize("Bonjour.")
+
+
+def make_speaker():
+    """Le moteur choisi dans config.TTS_ENGINE, avec repli sur Chatterbox si Kokoro manque."""
+    if config.TTS_ENGINE.lower() == "kokoro":
+        try:
+            return KokoroSpeaker()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[tts] Kokoro indisponible ({exc}), Chatterbox utilisé", file=sys.stderr)
+    return Speaker()
+
+
 def first_clause_split(sentence: str, max_chars: int = 70) -> list[str]:
     """Pour parler plus tôt : une première phrase longue est coupée à sa première virgule (Chatterbox met
     1,2 s pour 15 caractères mais 3,3 s pour 90). « Demain à Mulhouse, le temps sera clair » -> deux morceaux."""
@@ -492,3 +543,8 @@ class Speaker:
     def stop(self) -> None:
         if sd is not None:
             sd.stop()
+
+
+# Kokoro partage la lecture, la file de phrases, la pause et le préchargement de Speaker (seule la synthèse diffère).
+for _shared in ("say", "say_queue", "_speak_sentences", "_play", "stop", "preload"):
+    setattr(KokoroSpeaker, _shared, getattr(Speaker, _shared))
