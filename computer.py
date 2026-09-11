@@ -484,12 +484,16 @@ def windows_matching(title: str) -> list:
             return out
     pids = {pid for pid, _exe in processes_matching(title)}
     if pids:
+        scored = []
         for w, t in wins:
             try:
                 if w.process_id() in pids and t != "program manager":
-                    out.append(w)
+                    # la vraie fenêtre d'abord : celle qui partage le plus de mots avec le nom, les overlays en dernier
+                    score = sum(x in t for x in words) - (2 if "overlay" in t else 0)
+                    scored.append((score, w))
             except Exception:  # noqa: BLE001
                 continue
+        out = [w for _s, w in sorted(scored, key=lambda x: -x[0])]
     return out
 
 

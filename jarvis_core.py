@@ -39,6 +39,16 @@ MODE VOCAL : tu t'appelles {config.ASSISTANT_NAME}. Ta réponse sera lue à voix
 """
 
 
+# Dernière phrase qui annonce une action au lieu de la faire (« je vais regarder », « un instant, je vérifie »…)
+_PROMISE = re.compile(r"\b(je vais(?! (tres |très )?bien)|un instant|je regarde|je verifie|je vérifie|laissez[- ]moi|je m'en occupe|je cherche|"
+                      r"je lance|je m'y mets|je procede|je procède|tout de suite|je m'en charge|je me renseigne|"
+                      r"je vais essayer|je m'apprete|je m'apprête)\b", re.I)
+
+# Demande qui est une TÂCHE (pas une simple question) : Jarvis doit d'abord choisir sa voie (quelle appli, quel outil).
+_TASK = re.compile(r"\b(verifie|vérifie|regarde si|trouve|cherche|configure|installe|mets? a jour|mets? à jour|met a jour|"
+                   r"repare|répare|active|desactive|désactive|change|regle|règle|ouvre|lance|ferme|nettoie|optimise|"
+                   r"telecharge|télécharge|branche|connecte|scanne|analyse|verifier|vérifier)\b", re.I)
+
 TOOL_CUES = {
     "web_search": "Je regarde sur internet.", "research": "Je me renseigne sur internet.",
     "fetch_url": "Je lis la page.", "open_site": "Je cherche le site.",
@@ -551,7 +561,12 @@ class JarvisCore:
         with self._lock:
             # La date du jour accompagne chaque demande : indispensable pour « jeudi », « demain », l'agenda…
             import journal
-            self.messages.append({"role": "user", "content": f"{user}\n\n[Aujourd'hui : {agenda.today_line()}. {journal.context_line()}]"})
+            hint = ""
+            if _TASK.search(user) and len(user) > 20:  # « Ouvre Spotify » n'a pas besoin de plan
+                hint = (" Cette demande est une tâche : choisis d'abord la bonne voie (quelle application, quel réglage Windows, "
+                        "quel outil ; si un nom d'application échoue, trouve le vrai nom avec list_apps ou list_windows, ou cherche "
+                        "sur le web « comment … sous Windows »), dis-la en une phrase, puis FAIS-LA dans cette réponse jusqu'au résultat.")
+            self.messages.append({"role": "user", "content": f"{user}\n\n[Aujourd'hui : {agenda.today_line()}. {journal.context_line()}{hint}]"})
             self._trim_history()
             t = time.time()
 
@@ -625,6 +640,18 @@ class JarvisCore:
             self._stop_speech.clear()  # le bouton Stop interrompt aussi la génération
             answer = run_turn(self.messages, self.model, show=False, on_tool=on_tool, cancel_event=self._stop_speech,
                               on_tool_start=on_tool_start, on_content=on_content)
+            # Le modèle annonce parfois une action et s'arrête (« un instant, je vérifie ») : on le renvoie agir
+            # aussitôt, dans le même tour, au plus deux fois.
+            for _again in range(2):
+                if self._stop_speech.is_set() or not self._ends_with_promise(answer):
+                    break
+                print(f"[jarvis] promesse sans action (« {answer.strip()[-60:]} ») : je le renvoie agir", flush=True)
+                self.messages.append({"role": "user", "content": "(Ne l'annonce pas : fais-le maintenant avec les outils, puis donne le résultat.)"})
+                more = run_turn(self.messages, self.model, show=False, on_tool=on_tool, cancel_event=self._stop_speech,
+                                on_tool_start=on_tool_start, on_content=on_content)
+                if not more:
+                    break
+                answer = (answer.rstrip() + "\n\n" + more.strip()).strip()
             if secrets:
                 self._scrub(secrets)
                 for s in secrets:
@@ -683,6 +710,15 @@ class JarvisCore:
                             call.function.arguments = {k: clean(v) if isinstance(v, str) else v for k, v in args.items()}
                 except Exception:  # noqa: BLE001
                     self.messages[i] = {"role": getattr(m, "role", "assistant"), "content": clean(getattr(m, "content", "") or "")}
+
+    @staticmethod
+    def _ends_with_promise(answer: str) -> bool:
+        """Vrai si la réponse se termine par une annonce d'action non suivie d'effet (le modèle s'arrête au lieu d'agir)."""
+        sentences = [s for s in re.split(r"(?<=[.!?…])\s+", answer.strip()) if s.strip()]
+        if not sentences:
+            return False
+        last = sentences[-1]
+        return len(last) < 220 and bool(_PROMISE.search(last))
 
     def _swap_voice(self, engine: str) -> None:
         """Change le moteur de synthèse (Kokoro rapide <-> Chatterbox naturelle) entre deux tours."""
