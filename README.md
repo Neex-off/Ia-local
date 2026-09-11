@@ -144,9 +144,10 @@ Tout est dans **`config.py`**, commenté ligne par ligne :
 | `CHECKIN_HOUR` | heure à partir de laquelle il demande de lui-même comment s'est passée la journée (None = jamais) |
 | `MODEL`, `MODELS` | modèle de démarrage et catalogue |
 | `CPU_AUTO_SMALL` | sans carte graphique, démarre avec le plus petit modèle installé au lieu de `MODEL` |
-| `voix/ma_voix.wav` | déposez 10 secondes de voix : il l'imite |
+| `voix/ma_voix.wav` | déposez 10 secondes de voix : il l'imite (le cache `voix/cache/` se reconstruit tout seul) |
 | `VOCAB_HINTS` | vos noms propres, pour la reconnaissance vocale |
 | `BARGE_IN_SENSITIVITY` | à monter si vous utilisez des enceintes |
+| `STREAM_SPEECH`, `SILENCE_SECONDS` | parole dès la première phrase générée ; délai de silence qui clôt votre phrase (0,8 s) |
 | `STANDBY_AFTER_SECONDS` | délai avant la veille profonde |
 | `REMINDER_MINUTES`, `MORNING_BRIEF_HOUR` | rappels parlés avant un rendez-vous, heure du programme du jour |
 | `PROJECT_DIRS`, `GITHUB_USER`, `GITHUB_TOKEN` | vue projets et dépôts GitHub |

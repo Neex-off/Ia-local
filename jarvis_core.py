@@ -39,6 +39,18 @@ MODE VOCAL : tu t'appelles {config.ASSISTANT_NAME}. Ta réponse sera lue à voix
 """
 
 
+TOOL_CUES = {
+    "web_search": "Je regarde sur internet.", "research": "Je me renseigne sur internet.",
+    "fetch_url": "Je lis la page.", "open_site": "Je cherche le site.",
+    "search_files": "Je cherche dans tes fichiers.", "see_screen": "Je regarde l'écran.",
+    "use_skill": "Je m'en occupe, un instant.", "create_pdf": "Je prépare le document.",
+    "create_docx": "Je prépare le document.", "show_projects": "J'affiche tes projets.",
+    "open_url": "J'ouvre la page.", "open_app": "Je lance l'application.",
+}
+# Fin de phrase : ponctuation suivie d'un blanc ou de la fin (« 3.5 » ou « M. Dupont » ne coupent pas)
+_SENTENCE_END = re.compile(r"[.!?…](?=\s|$)")
+
+
 def _unload(model: str) -> None:
     """Décharge un modèle d'Ollama (libère sa VRAM et sa RAM)."""
     try:
@@ -188,6 +200,8 @@ class JarvisCore:
         self.emit({"type": "level", "src": "mic", "v": rms, "speech": speech})
 
     def _tts_level(self, rms: float) -> None:
+        if rms > 0.01 and getattr(self, "_perf_first_audio", 0) is None:
+            self._perf_first_audio = time.time()  # premier son de la réponse (mesure de réactivité)
         self._tts_recent = (self._tts_recent + [rms])[-6:]  # 6 blocs de 50 ms : couvre la latence enceintes -> micro
         self.emit({"type": "level", "src": "tts", "v": rms, "speech": rms > 0.005})
 
@@ -338,6 +352,9 @@ class JarvisCore:
             print(f"[jarvis] {self.voice_error}", flush=True)
             return
         self.mouth, self.ears = mouth, ears
+        # Phrases fixes pré-synthétisées : « Oui monsieur ? », annonces d'outils… sortent sans délai.
+        mouth.preload(list(config.GREETINGS_WAKE) + [config.GREETING_START, "À plus tard.", "Un instant, je reviens.",
+                      "Je charge le modèle, un instant.", "C'est prêt, je t'écoute."] + list(TOOL_CUES.values()))
         self.emit({"type": "assistant", "text": config.GREETING_START, "seconds": 0})
         print("[jarvis] voix prête", flush=True)
         self._say(config.GREETING_START, interruptible=False)  # « Jarvis en ligne, monsieur… » à chaque démarrage
@@ -537,24 +554,59 @@ class JarvisCore:
             t = time.time()
 
             spoken_cue = {"done": False}
-            CUES = {
-                "web_search": "Je regarde sur internet.", "research": "Je me renseigne sur internet.",
-                "fetch_url": "Je lis la page.", "open_site": "Je cherche le site.",
-                "search_files": "Je cherche dans tes fichiers.", "see_screen": "Je regarde l'écran.",
-                "use_skill": "Je m'en occupe, un instant.", "create_pdf": "Je prépare le document.",
-                "create_docx": "Je prépare le document.", "show_projects": "J'affiche tes projets.",
-                "open_url": "J'ouvre la page.", "open_app": "Je lance l'application.",
-            }
+            CUES = TOOL_CUES
+            # Parole en flux : les phrases sont poussées dans une file dès qu'elles sont complètes ; un thread
+            # les dit pendant que le modèle continue. Première phrase coupée à la virgule pour parler plus tôt.
+            import voice as _voice
+            stream = {"q": None, "thread": None, "spoken": 0, "last": "", "first": True,
+                      "active": config.STREAM_SPEECH and self.mouth is not None}
+            self._perf_first_audio = None
+            perf = {"first_sentence": None}
+
+            def speak(sentence: str) -> None:
+                if stream["q"] is None:
+                    stream["q"] = queue.Queue()
+                    stream["thread"] = threading.Thread(target=self._say_queue, args=(stream["q"],), daemon=True, name="parole")
+                    stream["thread"].start()
+                stream["q"].put(sentence)
+
+            def on_content(text: str) -> None:
+                if not stream["active"]:
+                    return
+                if "<<<FICHIER" in text or "```" in text:
+                    stream["active"] = False  # un fichier ne se lit pas à voix haute : le texte final sera dit après
+                    return
+                if len(text) < stream["spoken"]:
+                    stream["spoken"] = 0  # nouvel appel au modèle (après un outil)
+                stream["last"] = text
+                while True:
+                    m = _SENTENCE_END.search(text, stream["spoken"])
+                    if not m:
+                        break
+                    sent = text[stream["spoken"]:m.end()].strip()
+                    stream["spoken"] = m.end()
+                    if not sent:
+                        continue
+                    parts = _voice.first_clause_split(sent) if stream["first"] else [sent]
+                    if stream["first"]:
+                        perf["first_sentence"] = time.time() - t
+                        stream["first"] = False
+                    for p in parts:
+                        speak(p)
 
             def on_tool_start(name, args, model_text):
-                # Une seule annonce parlée par tour, courte, avant le premier outil un peu long.
-                if spoken_cue["done"]:
+                # Une seule annonce parlée par tour, courte, avant le premier outil un peu long
+                # (sauf si le texte du modèle avant l'outil a déjà été dit en flux).
+                if spoken_cue["done"] or stream["spoken"] > 0:
                     return
                 cue = model_text if 0 < len(model_text) <= 90 else CUES.get(name)
                 if cue:
                     spoken_cue["done"] = True
                     self.emit({"type": "assistant", "text": cue, "seconds": 0})
-                    self._say(cue)
+                    if stream["active"]:
+                        speak(cue)
+                    else:
+                        self._say(cue)
                     self._set_state("thinking")
 
             def on_tool(name, args, result):
@@ -570,15 +622,28 @@ class JarvisCore:
 
             self._stop_speech.clear()  # le bouton Stop interrompt aussi la génération
             answer = run_turn(self.messages, self.model, show=False, on_tool=on_tool, cancel_event=self._stop_speech,
-                              on_tool_start=on_tool_start)
+                              on_tool_start=on_tool_start, on_content=on_content)
             if secrets:
                 self._scrub(secrets)
                 for s in secrets:
                     answer = answer.replace(s, "••••••••")
         self.emit({"type": "assistant", "text": answer, "seconds": round(time.time() - t, 1)})
         memory.log_message("assistant", answer)
-        if answer:
+        if stream["q"] is not None:
+            if stream["active"]:
+                tail = stream["last"][stream["spoken"]:].strip()  # fin de réponse sans point final
+                if tail and not secrets:
+                    speak(tail)
+            stream["q"].put(None)
+            stream["thread"].join(timeout=config.MAX_RECORD_SECONDS * 4)
+            if not stream["active"] and answer:  # fichier écrit : on dit seulement la conclusion
+                self._say(answer.strip().split("\n")[-1])
+        elif answer:
             self._say(answer)
+        if perf["first_sentence"] is not None or self._perf_first_audio is not None:
+            fs = f"{perf['first_sentence']:.1f}s" if perf["first_sentence"] is not None else "-"
+            fa = f"{self._perf_first_audio - t:.1f}s" if self._perf_first_audio else "-"
+            print(f"[perf] première phrase {fs} | premier son {fa} | réponse complète {time.time() - t:.1f}s", flush=True)
         old = getattr(self, "_unload_after_turn", None)
         new = getattr(self, "_preload_after_turn", None)
         if old or new:
@@ -659,14 +724,37 @@ class JarvisCore:
             # Parole finie ou coupée : on repasse tout de suite à l'écoute (ou en veille).
             self._set_state("listening" if self.awake else "idle")
 
-    def _say_inner(self, text: str, interruptible: bool = True) -> None:
+    def _say_queue(self, q: "queue.Queue[str | None]") -> None:
+        """Comme _say, mais les phrases arrivent au fil de l'eau (réponse en cours de génération)."""
+        self._last_said = ""
+        self._stop_speech.clear()
+        self._set_state("speaking")
+        try:
+            self._say_inner("", True, sentences=q)
+        finally:
+            self._set_state("listening" if self.awake else "idle")
+
+    def _say_inner(self, text: str, interruptible: bool = True, sentences=None) -> None:
         if self.mouth is None:  # pas de voix (chargement en cours ou audio indisponible) : le texte est déjà à l'écran
+            if sentences is not None:  # vider la file pour ne pas bloquer le producteur
+                while sentences.get() is not None:
+                    pass
             return
+
+        def remember(s: str) -> None:  # pour reconnaître son propre écho pendant une réponse en flux
+            self._last_said = (self._last_said + " " + s)[-600:]
+
+        def mouth_say(**kw) -> None:
+            if sentences is not None:
+                self.mouth.say_queue(sentences, level_cb=self._tts_level, on_sentence=remember, **kw)
+            else:
+                self.mouth.say(text, level_cb=self._tts_level, **kw)
+
         if not interruptible:
-            self.mouth.say(text, level_cb=self._tts_level, stop_event=None)
+            mouth_say(stop_event=None)
             return
         if not (config.BARGE_IN and self.mic_enabled and self.ears is not None):
-            self.mouth.say(text, level_cb=self._tts_level, stop_event=self._stop_speech)
+            mouth_say(stop_event=self._stop_speech)
             return
 
         # Coupure de parole : on écoute le micro pendant qu'il parle ; dès que l'utilisateur parle,
@@ -724,7 +812,7 @@ class JarvisCore:
 
         th = threading.Thread(target=watcher, daemon=True)
         th.start()
-        self.mouth.say(text, level_cb=self._tts_level, stop_event=self._stop_speech, pause_event=pause)
+        mouth_say(stop_event=self._stop_speech, pause_event=pause)
         stop_listen.set()
         th.join(timeout=config.MAX_RECORD_SECONDS + 3)
         if barge["text"] is not None:

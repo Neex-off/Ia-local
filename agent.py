@@ -203,8 +203,9 @@ class RunawayThinking(Exception):
 NUDGE = {"role": "user", "content": "(Réponds maintenant directement, en une ou deux phrases, sans réfléchir à voix haute.)"}
 
 
-def chat_stream(model: str, messages: list, cancel_event=None, timeout: float | None = None):
-    """Appel au modèle en flux continu, interruptible : renvoie un Message assemblé."""
+def chat_stream(model: str, messages: list, cancel_event=None, timeout: float | None = None, on_content=None):
+    """Appel au modèle en flux continu, interruptible : renvoie un Message assemblé.
+    on_content(texte_cumulé) est appelé à chaque morceau reçu (pour parler dès la première phrase)."""
     from ollama import Message
 
     deadline = time.time() + timeout if timeout else None
@@ -220,6 +221,11 @@ def chat_stream(model: str, messages: list, cancel_event=None, timeout: float | 
             m = chunk.message
             if m.content:
                 content += m.content
+                if on_content is not None:
+                    try:
+                        on_content(content)
+                    except Exception:  # noqa: BLE001
+                        pass
             if m.thinking:
                 thinking += m.thinking
             if m.tool_calls:
@@ -244,7 +250,7 @@ def chat_stream(model: str, messages: list, cancel_event=None, timeout: float | 
 
 
 def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, cancel_event=None,
-             on_tool_start=None) -> str:
+             on_tool_start=None, on_content=None) -> str:
     """Un tour complet : le modèle réfléchit, appelle des outils si besoin, puis répond.
 
     on_tool       : appelé avec (nom, arguments, résultat) après chaque outil, pour une interface.
@@ -258,12 +264,12 @@ def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, 
         try:
             try:
                 try:
-                    msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT)
+                    msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT, on_content)
                 except RunawayThinking:
                     console.print("[yellow]Réflexion parasite du modèle : je relance avec une consigne directe.[/yellow]")
                     messages.append(NUDGE)
                     try:
-                        msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT)
+                        msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT, on_content)
                     except RunawayThinking:
                         from ollama import Message
                         msg = Message(role="assistant", content="")  # traité comme une réponse vide : nouvel essai ci-dessous
@@ -272,7 +278,7 @@ def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, 
             except ollama.ResponseError as exc:
                 if "tokenize" in str(exc).lower() and strip_all_images(messages):
                     console.print("[yellow]Historique d'images invalide pour Ollama : captures retirées, nouvel essai.[/yellow]")
-                    msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT)
+                    msg = chat_stream(model, messages, cancel_event, config.MODEL_CALL_TIMEOUT, on_content)
                 else:
                     raise
         except Interrupted as exc:

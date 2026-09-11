@@ -256,9 +256,12 @@ ECHO_MARGIN = 2.5
 # le coupe ; tout le reste (bruits, autres phrases, sa propre voix dans les enceintes) est ignoré et il finit sa phrase.
 # False : n'importe quelle phrase le coupe et est traitée comme une nouvelle demande.
 INTERRUPT_ONLY_ON_STOP = True
+# Parole en flux : Jarvis commence à parler dès que la première phrase de la réponse est générée (et la coupe à
+# la première virgule si elle est longue), sans attendre la fin. False : il attend la réponse complète.
+STREAM_SPEECH = True
 
 # Détection de fin de phrase au micro.
-SILENCE_SECONDS = 1.2      # secondes de silence avant d'arrêter l'enregistrement
+SILENCE_SECONDS = 0.8      # secondes de silence avant d'arrêter l'enregistrement (0.8 : réactif ; 1.2 si Jarvis te coupe dans tes pauses)
 SILENCE_THRESHOLD = 0.01   # niveau sonore en dessous duquel c'est du silence (monter si pièce bruyante)
 MAX_RECORD_SECONDS = 30
 

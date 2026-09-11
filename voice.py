@@ -262,6 +262,20 @@ def clean_for_speech(text: str) -> str:
     return text.strip()
 
 
+def first_clause_split(sentence: str, max_chars: int = 70) -> list[str]:
+    """Pour parler plus tôt : une première phrase longue est coupée à sa première virgule (Chatterbox met
+    1,2 s pour 15 caractères mais 3,3 s pour 90). « Demain à Mulhouse, le temps sera clair » -> deux morceaux."""
+    if len(sentence) <= max_chars:
+        return [sentence]
+    cut = sentence.find(",", 12, max_chars)
+    if cut == -1:
+        cut = sentence.find(" ", max_chars - 25, max_chars)
+    if cut == -1:
+        return [sentence]
+    head, tail = sentence[:cut + 1].strip(), sentence[cut + 1:].strip()
+    return [head, tail] if tail else [head]
+
+
 def split_sentences(text: str) -> list[str]:
     parts = re.split(r"(?<=[.!?…])\s+", text)
     # Les miettes (« 4. », « Ok. », un numéro de liste) font planter Chatterbox et sautaient en silence :
@@ -346,14 +360,49 @@ class Speaker:
         except Exception as exc:  # noqa: BLE001
             print(f"[tts] impossible de revenir sur GPU : {exc}", file=sys.stderr)
 
+    CACHE_MAX_CHARS = 80  # les phrases courtes (salutations, annonces) sont gardées : réponse instantanée
+
+    def _cache_path(self, sentence: str) -> Path:
+        import hashlib
+
+        key = f"{Path(self.voice_ref).name if self.voice_ref else 'defaut'}|{config.TTS_EXAGGERATION}|{config.TTS_CFG}|{config.TTS_TEMPERATURE}|{config.LANGUAGE}|{sentence.strip()}"
+        return config.ROOT / "voix" / "cache" / (hashlib.sha1(key.encode("utf-8")).hexdigest() + ".npy")
+
     def synthesize(self, sentence: str) -> np.ndarray:
+        cacheable = len(sentence) <= self.CACHE_MAX_CHARS
+        if cacheable:
+            p = self._cache_path(sentence)
+            if p.is_file():
+                try:
+                    return np.load(p)
+                except Exception:  # noqa: BLE001
+                    pass
         kwargs = {"language_id": config.LANGUAGE}
         if self.voice_ref:
             kwargs["audio_prompt_path"] = self.voice_ref
         with self._lock:
             wav = self.model.generate(sentence, exaggeration=config.TTS_EXAGGERATION,
                                       cfg_weight=config.TTS_CFG, temperature=config.TTS_TEMPERATURE, **kwargs)
-        return wav.squeeze().cpu().numpy().astype("float32")
+        out = wav.squeeze().cpu().numpy().astype("float32")
+        if cacheable:
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                np.save(p, out)
+            except Exception:  # noqa: BLE001
+                pass
+        return out
+
+    def preload(self, phrases: list[str]) -> None:
+        """Synthétise (et met en cache) des phrases fixes en arrière-plan : elles sortiront sans délai."""
+        def work():
+            for ph in phrases:
+                for s in split_sentences(clean_for_speech(ph)):
+                    try:
+                        self.synthesize(s)
+                    except Exception:  # noqa: BLE001
+                        pass
+
+        threading.Thread(target=work, daemon=True, name="tts-preload").start()
 
     def warmup(self) -> None:
         self.synthesize("Bonjour.")
@@ -369,6 +418,24 @@ class Speaker:
         sentences = split_sentences(clean_for_speech(text))
         if not sentences:
             return
+        self._speak_sentences(sentences, level_cb, stop_event, pause_event)
+
+    def say_queue(self, sentences: "queue.Queue[str | None]", level_cb=None, stop_event: threading.Event | None = None,
+                  pause_event: threading.Event | None = None, on_sentence=None) -> None:
+        """Parle des phrases qui arrivent au fil de l'eau (réponse en cours de génération). None termine."""
+        def gen():
+            while True:
+                s = sentences.get()
+                if s is None:
+                    return
+                for part in split_sentences(clean_for_speech(s)):
+                    if on_sentence is not None:
+                        on_sentence(part)
+                    yield part
+
+        self._speak_sentences(gen(), level_cb, stop_event, pause_event)
+
+    def _speak_sentences(self, sentences, level_cb=None, stop_event=None, pause_event=None) -> None:
         q: queue.Queue[np.ndarray | None] = queue.Queue(maxsize=3)
         cancelled = threading.Event()
 

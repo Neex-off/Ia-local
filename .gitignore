@@ -12,6 +12,7 @@ jarvis.log
 .claude/
 voix/ma_voix.wav
 voix/test_*.wav
+voix/cache/
 github-public/
 .DS_Store
 Thumbs.db
