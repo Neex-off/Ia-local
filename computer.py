@@ -240,7 +240,12 @@ def describe_screen(monitor: int = 0) -> tuple[Path, str]:
         for e in els:
             lines.append(f"  - {e['name']} [{e['type']}] -> {e['x']},{e['y']}")
     else:
-        lines.append("Aucun élément listé par l'accessibilité : utilise les coordonnées de la grille avec click(x, y).")
+        g = _LAST_CAPTURE.get("left", 0)
+        d = g + _LAST_CAPTURE.get("w", 1920) - 1
+        lines.append("Aucun élément listé par l'accessibilité : cette application dessine son interface elle-même "
+                     "(Epic Games, Steam, Discord, jeux…). click_element ne marchera PAS ici, n'essaie même pas. "
+                     f"Repère le bouton sur l'image et clique avec click(x, y), x entre {g} et {d} d'après la grille "
+                     "rouge ; zoom_screen(x, y) t'aide à viser, et see_screen après le clic te dit si ça a marché.")
     return path, "\n".join(lines)
 
 
@@ -382,7 +387,12 @@ def find_element(name: str) -> dict | None:
 def click_element(name: str, double: bool = False) -> str:
     e = find_element(name)
     if e is None:
-        return f"Aucun élément nommé « {name} » dans la dernière capture. Refais see_screen ou utilise click(x, y)."
+        g = _LAST_CAPTURE.get("left", 0)
+        d = g + _LAST_CAPTURE.get("w", 1920) - 1
+        return (f"Aucun élément nommé « {name} » dans la dernière capture : RIEN n'a été cliqué. Si la liste "
+                "d'éléments était vide, l'application dessine son interface elle-même et click_element ne marchera "
+                f"jamais dessus : repère le bouton sur l'image et clique avec click(x, y), x entre {g} et {d} "
+                "d'après la grille rouge, puis refais see_screen pour vérifier.")
     msg = _click_raw(e["x"], e["y"], double=double)  # coordonnées déjà réelles : pas de correction
     time.sleep(1.0)  # laisse l'écran changer avant la capture suivante
     return f"{msg} sur « {e['name']} » [{e['type']}]. Vérifie avec see_screen que la page attendue est bien affichée avant de conclure."

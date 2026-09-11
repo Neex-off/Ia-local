@@ -55,8 +55,14 @@ _CLAIM = re.compile(
     r"j'ai (?:bien |déjà )?(?:not[eé]|enregistr[eé]|ajout[eé]|cr[eé]{2}|"
     r"supprim[eé]|envoy[eé]|ferm[eé]|ouvert|lanc[eé]|modifi[eé]|"
     r"install[eé]|rang[eé]|t[eé]l[eé]charg[eé]|sauvegard[eé]|"
-    r"mis à jour|mis dans|programm[eé]|plac[eé]))",
+    r"mis à jour|mis dans|programm[eé]|plac[eé]|cliqu[eé]|appuy[eé]|"
+    r"s[eé]lectionn[eé]|coch[eé]|valid[eé])"
+    r"|je viens de (?:cliquer|appuyer|s[eé]lectionner|cocher|valider|fermer|ouvrir|lancer))",
     re.I)
+
+# Réponse d'outil qui signale un échec : l'action n'a PAS eu lieu, interdit d'annoncer un succès derrière.
+_ECHEC = re.compile(r"(aucun [eé]l[eé]ment nomm[eé]|pas ferm[eé]|introuvable|n'existe pas|"
+                    r"erreur d|[eé]chec|impossible de|non trouv[eé]|aucune fen[eê]tre)", re.I)
 
 # Mots qui rattachent une demande à une boîte à outils. S'il répond sans avoir appelé d'outil sur un de ces
 # sujets, c'est qu'il a inventé au lieu de lire les vraies données.
@@ -665,10 +671,13 @@ class JarvisCore:
                         self._say(cue)
                     self._set_state("thinking")
 
-            outils_appeles = {"n": 0}
+            outils_appeles = {"n": 0, "echec": None}
 
             def on_tool(name, args, result):
                 outils_appeles["n"] += 1
+                # Un outil qui échoue ne doit pas devenir « c'est fait » : on retient le dernier verdict,
+                # et un outil qui réussit ensuite efface l'échec précédent.
+                outils_appeles["echec"] = (name, result[:200]) if _ECHEC.search(result or "") else None
                 self._set_state("tool")
                 if result.startswith("[[secret]]"):
                     # Mot de passe tapé dans un champ de mot de passe : on le masque partout.
@@ -705,6 +714,20 @@ class JarvisCore:
                                 cancel_event=self._stop_speech, on_tool_start=on_tool_start, on_content=on_content)
                 if more:
                     answer = more.strip() if outils_appeles["n"] else (answer.rstrip() + "\n\n" + more.strip())
+            # Le dernier outil a ÉCHOUÉ mais il annonce quand même que c'est fait : on le renvoie réessayer.
+            if answer and outils_appeles.get("echec") and _CLAIM.search(answer) and not self._stop_speech.is_set():
+                nom_outil, retour = outils_appeles["echec"]
+                print(f"[jarvis] succès annoncé alors que {nom_outil} a échoué : je le renvoie réessayer", flush=True)
+                self.messages.append({"role": "user", "content":
+                    f"(Ton dernier outil {nom_outil} a ÉCHOUÉ : il a répondu « {retour} ». L'action n'a donc PAS eu "
+                    "lieu et tu viens quand même d'annoncer un succès. Refais-la vraiment : see_screen, repère "
+                    "l'élément sur l'image, puis click(x, y) avec les coordonnées de la grille rouge (sur le second "
+                    "écran, x va de 1920 à 3839), et regarde à nouveau pour vérifier que l'écran a changé. Si ça ne "
+                    "marche toujours pas, dis franchement ce que tu vois et ce qui bloque.)"})
+                more = run_turn(self.messages, self.model, show=False, on_tool=on_tool,
+                                cancel_event=self._stop_speech, on_tool_start=on_tool_start, on_content=on_content)
+                if more:
+                    answer = more.strip()
             # Il a répondu de tête sur un sujet dont les vraies données sont dans une boîte à outils :
             # sans outil appelé, la réponse est inventée. On le renvoie chercher la vraie donnée.
             if answer and not outils_appeles["n"] and not self._stop_speech.is_set():
