@@ -1343,17 +1343,23 @@ def see_screen(monitor: int = 0, window: str = "") -> str:
     """Regarde l'écran : capture d'écran (avec grille de coordonnées) et liste des boutons, champs et liens de la fenêtre active. Donne `window` pour remettre d'abord une fenêtre au premier plan (sinon elle peut être cachée derrière une autre).
 
     Args:
-        monitor: 0 = l'écran où se trouve la fenêtre active (par défaut), 1 = écran principal, 2 = second écran.
-        window: Optionnel : un morceau du titre de la fenêtre à mettre devant avant de regarder (ex. "Epic Games", "Chrome").
+        monitor: 0 = l'écran où se trouve la fenêtre active (par défaut), 1 = écran principal, 2 = second écran, -1 = TOUS les écrans d'un coup quand tu ne sais pas où est l'application.
+        window: Optionnel : un morceau du titre de la fenêtre à regarder. Je la mets devant ET je capture l'écran où elle se trouve vraiment, même si c'est le second (ex. "Epic Games", "Chrome").
     """
     try:
         import computer
 
-        note = ""
+        note, cible = "", int(monitor)
         if window and window.strip():
             note = computer.focus_window(window.strip()) + "\n"
             time.sleep(0.8)
-        path, text = computer.describe_screen(int(monitor))
+            trouver = getattr(computer, "monitor_of_window", None)
+            if trouver is not None and cible >= 0:
+                n = trouver(window.strip())
+                if n and n != cible:
+                    note += f"« {window.strip()} » est sur l'écran {n} : c'est celui-là que je regarde.\n"
+                    cible = n
+        path, text = computer.describe_screen(cible)
         text = note + text
         return f"{IMAGE_MARK}{path}]]\n{text}"
     except Exception as exc:  # noqa: BLE001
@@ -1364,7 +1370,7 @@ def click(x: int, y: int, double: bool = False, right: bool = False) -> str:
     """Clique à des coordonnées écran (celles de la grille rouge de see_screen ou d'un élément listé).
 
     Args:
-        x: Position horizontale en pixels.
+        x: Position horizontale en pixels, telle qu'écrite sur la grille rouge (sur le second écran elle va de 1920 à 3839), pas la position dans l'image.
         y: Position verticale en pixels.
         double: True pour un double-clic.
         right: True pour un clic droit.

@@ -44,20 +44,75 @@ def _norm(s: str) -> str:
 
 # ---------------------------------------------------------------------- écran
 
+def monitors_info() -> list[dict]:
+    """Écrans réellement branchés : numéro, taille, position, et lequel est le principal."""
+    import mss
+
+    with mss.MSS() as s:
+        mons = s.monitors
+    return [{"n": i, "w": m["width"], "h": m["height"], "left": m["left"], "top": m["top"],
+             "principal": m["left"] == 0 and m["top"] == 0} for i, m in enumerate(mons[1:], start=1)]
+
+
+def monitor_of_window(title: str) -> int:
+    """Numéro de l'écran (1..n) où se trouve une fenêtre donnée. 0 si elle est introuvable ou réduite.
+
+    Plusieurs fenêtres peuvent porter le même nom, dont des fenêtres réduites posées hors écran
+    (à -32000 pixels sous Windows) : on les saute et on garde la première réellement visible.
+    """
+    ecrans = monitors_info()
+    for w in windows_matching(title):
+        try:
+            r = w.rectangle()
+        except Exception:  # noqa: BLE001
+            continue
+        cx, cy = (r.left + r.right) // 2, (r.top + r.bottom) // 2
+        if cx < -10000 or cy < -10000:  # fenêtre réduite, elle n'est sur aucun écran
+            continue
+        for m in ecrans:
+            if m["left"] <= cx < m["left"] + m["w"] and m["top"] <= cy < m["top"] + m["h"]:
+                return m["n"]
+    return 0
+
+
+def screens_summary() -> str:
+    """Phrase décrivant les écrans, donnée au modèle pour qu'il sache qu'il y en a plusieurs."""
+    ecrans = monitors_info()
+    if len(ecrans) <= 1:
+        return "Cet ordinateur n'a qu'un seul écran."
+    parts = [f"écran {m['n']} ({m['w']}x{m['h']}, x de {m['left']} à {m['left'] + m['w'] - 1})"
+             + (", principal" if m["principal"] else "") for m in ecrans]
+    return (f"ATTENTION, cet ordinateur a {len(ecrans)} écrans : " + " ; ".join(parts)
+            + ". Une application peut très bien être sur l'autre écran.")
+
+
+# Dernière capture montrée au modèle : sert à rattraper un clic donné en coordonnées d'image
+# (0..largeur) alors que l'écran capturé commence à x=1920.
+_LAST_CAPTURE: dict = {"left": 0, "top": 0, "w": 0, "h": 0, "monitor": 1}
+
+
 def screenshot(monitor: int = 1) -> tuple[Path, int, int]:
-    """Capture le moniteur (1 = principal) avec une grille, écrit SHOT_PATH. Renvoie (chemin, largeur, hauteur) écran."""
+    """Capture un moniteur avec une grille, écrit SHOT_PATH. Renvoie (chemin, largeur, hauteur).
+
+    monitor : 1 = écran principal, 2 = second écran, 0 = celui de la fenêtre active, -1 = tous les écrans d'un coup.
+    """
     import mss
     from PIL import Image, ImageDraw
 
     with mss.MSS() as s:
         mons = s.monitors
-        if monitor <= 0:  # auto : l'écran qui contient la fenêtre active
-            monitor = _monitor_of_foreground(mons)
-        monitor = max(1, min(monitor, len(mons) - 1))
-        m = mons[monitor]
+        if monitor < 0:  # tous les écrans réunis en une seule image
+            m = mons[0]
+        else:
+            if monitor == 0:  # auto : l'écran qui contient la fenêtre active
+                monitor = _monitor_of_foreground(mons)
+            monitor = max(1, min(monitor, len(mons) - 1))
+            m = mons[monitor]
         shot = s.grab(m)
         img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
     w, h = img.size
+    _LAST_CAPTURE.update({"left": m["left"], "top": m["top"], "w": w, "h": h,
+                          "monitor": 0 if monitor < 0 else monitor})
     scale = min(1.0, SCREEN_MAX_W / w)
     small = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
@@ -162,7 +217,24 @@ def describe_screen(monitor: int = 0) -> tuple[Path, str]:
     except Exception:  # noqa: BLE001
         title = "?"
     els = ui_elements()
-    lines = [f"Capture de l'écran où se trouve la fenêtre active ({w}x{h} pixels). Grille rouge = coordonnées écran (x, y). Fenêtre active : « {title} »."]
+    ecrans = monitors_info()
+    if monitor < 0:
+        quel = f"les {len(ecrans)} écrans réunis"
+    elif monitor == 0:
+        quel = f"l'écran {_monitor_of_foreground([{}] + [{'left': m['left'], 'top': m['top'], 'width': m['w'], 'height': m['h']} for m in ecrans])} (celui de la fenêtre active)"
+    else:
+        quel = f"l'écran {monitor}"
+    lines = [f"Capture de {quel}, {w}x{h} pixels. Grille rouge = coordonnées écran (x, y). Fenêtre active : « {title} ».",
+             screens_summary()]
+    if _LAST_CAPTURE.get("left"):
+        gauche, droite = _LAST_CAPTURE["left"], _LAST_CAPTURE["left"] + _LAST_CAPTURE["w"] - 1
+        lines.append(f"ATTENTION COORDONNÉES : cet écran commence à x={gauche} et finit à x={droite}. "
+                     f"Les nombres écrits sur la grille rouge sont les vrais x : recopie-les tels quels et ne "
+                     f"clique jamais avec un x inférieur à {gauche}, sinon la souris part sur l'autre écran.")
+    if len(ecrans) > 1 and monitor >= 0:
+        lines.append("Si tu ne vois pas l'application attendue, elle est probablement sur l'autre écran : "
+                     "refais see_screen avec monitor=-1 pour voir les deux d'un coup, ou donne le nom de la "
+                     "fenêtre dans window pour que je la trouve toute seule.")
     if els:
         lines.append("Éléments de la fenêtre active (nom [type] -> x,y), utilisables avec click_element :")
         for e in els:
@@ -182,7 +254,35 @@ def _pag():
     return pyautogui
 
 
-def click(x: int, y: int, button: str = "left", double: bool = False) -> str:
+def _screen_of_point(x: int, y: int) -> int:
+    """Numéro de l'écran qui contient ce point, 0 si aucun."""
+    for m in monitors_info():
+        if m["left"] <= x < m["left"] + m["w"] and m["top"] <= y < m["top"] + m["h"]:
+            return m["n"]
+    return 0
+
+
+def _fix_point(x: int, y: int) -> tuple[int, int, str]:
+    """Rattrape des coordonnées lues dans l'image au lieu de la grille.
+
+    Le modèle repère souvent un bouton par sa position dans l'image capturée (0..largeur) alors que
+    l'écran capturé commence à x=1920 : la souris partirait sur l'autre écran. Si le point tombe hors
+    de l'écran capturé mais qu'y ajouter l'origine de cet écran le remet dedans, on corrige.
+    """
+    x, y = int(x), int(y)
+    cap = _LAST_CAPTURE
+    if not cap["w"] or (not cap["left"] and not cap["top"]):
+        return x, y, ""
+    if cap["left"] <= x < cap["left"] + cap["w"] and cap["top"] <= y < cap["top"] + cap["h"]:
+        return x, y, ""
+    nx, ny = x + cap["left"], y + cap["top"]
+    if cap["left"] <= nx < cap["left"] + cap["w"] and cap["top"] <= ny < cap["top"] + cap["h"]:
+        return nx, ny, (f"[({x}, {y}) était la position dans l'image, pas sur l'écran : "
+                        f"corrigé en ({nx}, {ny})]")
+    return x, y, ""
+
+
+def _click_raw(x: int, y: int, button: str = "left", double: bool = False) -> str:
     pag = _pag()
     x, y = int(x), int(y)
     pag.moveTo(x, y, duration=getattr(config, "MOUSE_MOVE_SECONDS", 0.15))  # déplacement visible par l'utilisateur
@@ -190,16 +290,26 @@ def click(x: int, y: int, button: str = "left", double: bool = False) -> str:
         pag.doubleClick(x, y, button=button)
     else:
         pag.click(x, y, button=button)
-    return f"{'Double-clic' if double else 'Clic'} {button} en ({x}, {y})"
+    ecran = _screen_of_point(x, y)
+    quoi = "Double-clic" if double else "Clic"
+    return f"{quoi} {button} en ({x}, {y})" + (f" sur l'écran {ecran}" if ecran else "")
+
+
+def click(x: int, y: int, button: str = "left", double: bool = False) -> str:
+    x, y, note = _fix_point(x, y)
+    return f"{_click_raw(x, y, button=button, double=double)} {note}".strip()
 
 
 def move(x: int, y: int) -> str:
+    x, y, note = _fix_point(x, y)
     pag = _pag()
-    pag.moveTo(int(x), int(y), duration=0.2)
-    return f"Souris en ({int(x)}, {int(y)})"
+    pag.moveTo(x, y, duration=0.2)
+    return f"Souris en ({x}, {y}) {note}".strip()
 
 
 def drag(x1: int, y1: int, x2: int, y2: int, duration: float = 0.6) -> str:
+    x1, y1, _ = _fix_point(x1, y1)
+    x2, y2, _ = _fix_point(x2, y2)
     pag = _pag()
     pag.moveTo(int(x1), int(y1), duration=0.15)
     pag.mouseDown()
@@ -218,7 +328,11 @@ def zoom(x: int, y: int, width: int = 600, height: int = 400) -> tuple[Path, str
 
     with mss.MSS() as s:
         mons = s.monitors
-        mon = mons[_monitor_of_foreground(mons)] if len(mons) > 1 else mons[0]
+        x, y, _ = _fix_point(int(x), int(y))
+        mon = next((m for m in mons[1:] if m["left"] <= x < m["left"] + m["width"]
+                    and m["top"] <= y < m["top"] + m["height"]), None)
+        if mon is None:  # point hors écran : on retombe sur celui de la fenêtre active
+            mon = mons[_monitor_of_foreground(mons)] if len(mons) > 1 else mons[0]
         left = max(mon["left"], int(x) - width // 2)
         top = max(mon["top"], int(y) - height // 2)
         left = min(left, mon["left"] + mon["width"] - width)
@@ -269,7 +383,7 @@ def click_element(name: str, double: bool = False) -> str:
     e = find_element(name)
     if e is None:
         return f"Aucun élément nommé « {name} » dans la dernière capture. Refais see_screen ou utilise click(x, y)."
-    msg = click(e["x"], e["y"], double=double)
+    msg = _click_raw(e["x"], e["y"], double=double)  # coordonnées déjà réelles : pas de correction
     time.sleep(1.0)  # laisse l'écran changer avant la capture suivante
     return f"{msg} sur « {e['name']} » [{e['type']}]. Vérifie avec see_screen que la page attendue est bien affichée avant de conclure."
 
