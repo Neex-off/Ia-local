@@ -106,7 +106,7 @@ def _foreground_window():
     return Desktop(backend="uia").window(handle=hwnd)
 
 
-def ui_elements(max_items: int = 60, timeout: float = 6.0) -> list[dict]:
+def ui_elements(max_items: int = 120, timeout: float = 6.0) -> list[dict]:
     """Éléments interactifs visibles de la fenêtre active : [{name, type, x, y}]. Partiel si trop lent."""
     global _last_elements
     result: list[dict] = []
@@ -185,7 +185,7 @@ def _pag():
 def click(x: int, y: int, button: str = "left", double: bool = False) -> str:
     pag = _pag()
     x, y = int(x), int(y)
-    pag.moveTo(x, y, duration=0.15)
+    pag.moveTo(x, y, duration=getattr(config, "MOUSE_MOVE_SECONDS", 0.15))  # déplacement visible par l'utilisateur
     if double:
         pag.doubleClick(x, y, button=button)
     else:
@@ -245,12 +245,21 @@ def find_element(name: str) -> dict | None:
     for e in _last_elements:
         n = _norm(e["name"])
         if n == want:
-            return e
-        if want in n or n in want:
+            score = 1.0
+        elif want in n or n in want:
             score = min(len(want), len(n)) / max(len(want), len(n))
         else:
             ww, nw = set(want.split()), set(n.split())
             score = len(ww & nw) / max(len(ww), 1) * 0.8
+        # Collisions fréquentes : le menu Système de la barre de titre (icône en haut à gauche) porte le même nom
+        # qu'un onglet « Système » de l'application ; on préfère les boutons/onglets/liens aux éléments de menu,
+        # et on évite le coin supérieur gauche de l'écran.
+        if e.get("type") in ("MenuItem", "Menu", "MenuBar", "TitleBar") and e.get("y", 999) < 45:
+            continue  # menu Système de la fenêtre : jamais ciblé par un nom d'onglet
+        if e.get("type") in ("MenuItem", "Menu", "MenuBar", "TitleBar"):
+            score -= 0.25
+        if e.get("x", 999) < 40 and e.get("y", 999) < 40:
+            score -= 0.3
         if score > best_score:
             best, best_score = e, score
     return best if best_score >= 0.5 else None
@@ -261,7 +270,8 @@ def click_element(name: str, double: bool = False) -> str:
     if e is None:
         return f"Aucun élément nommé « {name} » dans la dernière capture. Refais see_screen ou utilise click(x, y)."
     msg = click(e["x"], e["y"], double=double)
-    return f"{msg} sur « {e['name']} » [{e['type']}]"
+    time.sleep(1.0)  # laisse l'écran changer avant la capture suivante
+    return f"{msg} sur « {e['name']} » [{e['type']}]. Vérifie avec see_screen que la page attendue est bien affichée avant de conclure."
 
 
 def focused_is_password() -> bool:
