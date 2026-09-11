@@ -1644,6 +1644,39 @@ TOOLBOXES = {
             "git (état, historique, branches, changer de branche, commit, push, annuler), secrets oubliés dans le "
             "code, lancer un projet, logiciels installés (installer, désinstaller, mettre à jour), pip/npm/cargo, "
             "Docker, modèles d'IA installés"),
+    "code": ("outils_code",
+             "qualité du code : analyse, formatage, tests, couverture, code mort, types, failles des "
+             "bibliothèques, licences, poids compilé, profilage, lecture de journaux ; et outils web : tester "
+             "une API, décoder un jeton, valider du JSON, tester une expression régulière, convertir une valeur, "
+             "en-têtes de sécurité, liens cassés, accessibilité, sitemap, audit de page, fausse API"),
+    "web": ("outils_web",
+            "télécharger un fichier, enregistrer une page, surveiller une page et voir ce qui a changé, résumer "
+            "une vidéo, historique et favoris du navigateur, notifications Windows, lire et envoyer des mails, "
+            "envoyer un message Discord, vérifier un lien suspect, chronomètre par projet, minuteur de travail, "
+            "résumé de la journée"),
+    "ia": ("outils_ia",
+           "comparer des modèles, mesurer leur vitesse, conseiller le bon modèle, télécharger ou supprimer un "
+           "modèle, créer un modèle personnalisé, transcrire un audio ou une vidéo, agrandir une image, "
+           "détourer un fond, construire une base de connaissances sur tes documents et la interroger"),
+    "vie": ("outils_vie",
+            "musculation (enregistrer les séries, historique, maximum, charge suivante, minuteur de repos), "
+            "poids et tendance, calcul des calories et protéines, liste de courses, rappels santé, maison "
+            "connectée, téléphone Android (écran, notifications, fichiers), cartes de révision, météo, "
+            "itinéraire, heure de départ"),
+    "business": ("outils_business",
+                 "clients et prospects, devis et factures numérotées avec PDF, suivi des impayés, estimation de "
+                 "projet, dépenses, bilan de l'année, seuils fiscaux et cotisations, export comptable, "
+                 "échéances, surveillance d'un site, expiration de certificat, position dans les moteurs"),
+    "contenu": ("outils_contenu",
+                "vidéo et audio (couper les silences, normaliser, réduire le bruit, extraire, découper, "
+                "convertir, assembler, sous-titres automatiques), micros et sorties audio, palette de couleurs, "
+                "contraste, formats réseaux sociaux, favicon, signature mail, calendrier éditorial, "
+                "téléprompteur, mode jeu, latence, cache des shaders, pilotage d'OBS"),
+    "serveur": ("outils_serveur",
+                "serveurs distants par SSH (état, journaux, redémarrer un service, mises à jour), DNS, "
+                "déploiement et retour arrière, page de statut, bases de données (structure, lecture, écriture, "
+                "export et import CSV, santé), Expo et émulateur Android, icônes d'application, tâches longues "
+                "en arrière-plan"),
 }
 _TOOLBOX_TOOLS: dict[str, list] = {}   # domaine -> fonctions, rempli au démarrage
 _OPENED: list[str] = []                # boîtes actuellement montrées au modèle (2 au maximum)
@@ -1657,9 +1690,24 @@ def open_toolbox(domain: str) -> str:
     """
     d = _norm_app(domain).replace(" ", "")
     alias = {"système": "systeme", "system": "systeme", "fenetres": "systeme", "ecran": "systeme",
+             "processus": "systeme", "energie": "systeme", "pressepapiers": "systeme",
              "fichier": "fichiers", "documents": "fichiers", "images": "fichiers", "pdf": "fichiers",
+             "rangement": "fichiers", "photos": "fichiers",
              "materiel": "machine", "reseau": "machine", "disque": "machine", "disques": "machine",
-             "securite": "machine", "windows": "machine", "git": "dev", "logiciels": "dev", "code": "dev"}
+             "securite": "machine", "windows": "machine", "wifi": "machine", "antivirus": "machine",
+             "git": "dev", "logiciels": "dev", "docker": "dev", "projet": "dev",
+             "tests": "code", "qualite": "code", "api": "code", "seo": "code", "accessibilite": "code",
+             "navigateur": "web", "mails": "web", "mail": "web", "messages": "web", "veille": "web",
+             "productivite": "web", "temps": "web", "notifications": "web",
+             "modeles": "ia", "transcription": "ia", "connaissances": "ia", "rag": "ia",
+             "sport": "vie", "muscu": "vie", "musculation": "vie", "sante": "vie", "maison": "vie",
+             "telephone": "vie", "android": "vie", "revisions": "vie", "meteo": "vie", "courses": "vie",
+             "factures": "business", "facture": "business", "devis": "business", "clients": "business",
+             "compta": "business", "comptabilite": "business", "argent": "business",
+             "video": "contenu", "audio": "contenu", "montage": "contenu", "design": "contenu",
+             "soustitres": "contenu", "obs": "contenu", "stream": "contenu", "jeu": "contenu",
+             "serveurs": "serveur", "ssh": "serveur", "deploiement": "serveur", "base": "serveur",
+             "donnees": "serveur", "sql": "serveur", "mobile": "serveur", "expo": "serveur"}
     d = alias.get(d, d)
     if d in ("liste", "", "?"):
         return "Boîtes disponibles :\n" + "\n".join(f"- {n} : {desc}" for n, (_m, desc) in TOOLBOXES.items())
