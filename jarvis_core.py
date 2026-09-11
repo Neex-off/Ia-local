@@ -678,6 +678,11 @@ class JarvisCore:
                 # Un outil qui échoue ne doit pas devenir « c'est fait » : on retient le dernier verdict,
                 # et un outil qui réussit ensuite efface l'échec précédent.
                 outils_appeles["echec"] = (name, result[:200]) if _ECHEC.search(result or "") else None
+                # Un clic peut tomber à côté : tant qu'il n'a pas regardé l'écran après, rien n'est vérifié.
+                if name in ("click", "click_element"):
+                    outils_appeles["clic_non_verifie"] = name
+                elif name in ("see_screen", "zoom_screen"):
+                    outils_appeles["clic_non_verifie"] = None
                 self._set_state("tool")
                 if result.startswith("[[secret]]"):
                     # Mot de passe tapé dans un champ de mot de passe : on le masque partout.
@@ -724,6 +729,19 @@ class JarvisCore:
                     "l'élément sur l'image, puis click(x, y) avec les coordonnées de la grille rouge (sur le second "
                     "écran, x va de 1920 à 3839), et regarde à nouveau pour vérifier que l'écran a changé. Si ça ne "
                     "marche toujours pas, dis franchement ce que tu vois et ce qui bloque.)"})
+                more = run_turn(self.messages, self.model, show=False, on_tool=on_tool,
+                                cancel_event=self._stop_speech, on_tool_start=on_tool_start, on_content=on_content)
+                if more:
+                    answer = more.strip()
+            # Il a cliqué puis annoncé le résultat sans regarder si l'écran a changé : on le renvoie vérifier.
+            if (answer and outils_appeles.get("clic_non_verifie") and _CLAIM.search(answer)
+                    and not outils_appeles.get("echec") and not self._stop_speech.is_set()):
+                print("[jarvis] clic annoncé sans vérification : je le renvoie regarder l'écran", flush=True)
+                outils_appeles["clic_non_verifie"] = None
+                self.messages.append({"role": "user", "content":
+                    "(Tu as cliqué mais tu n'as pas regardé le résultat, et un clic tombe parfois à côté. Refais "
+                    "see_screen maintenant, dis ce qui est affiché, et ne conclus que d'après ce que tu vois. Si la "
+                    "page attendue n'est pas là, reclique au bon endroit avant de répondre.)"})
                 more = run_turn(self.messages, self.model, show=False, on_tool=on_tool,
                                 cancel_event=self._stop_speech, on_tool_start=on_tool_start, on_content=on_content)
                 if more:

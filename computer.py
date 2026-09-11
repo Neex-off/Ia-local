@@ -161,6 +161,97 @@ def _foreground_window():
     return Desktop(backend="uia").window(handle=hwnd)
 
 
+def ocr_elements(monitor: int | None = None) -> list[dict]:
+    """Texte lu directement à l'image avec l'OCR intégrée à Windows.
+
+    Sert aux applications qui dessinent leur interface elles-mêmes (Epic Games, Steam, Discord, jeux) :
+    elles n'exposent aucun élément d'accessibilité, donc sans ça le modèle devrait deviner les coordonnées.
+    Même forme que ui_elements : [{name, type, x, y}] en coordonnées écran réelles.
+    """
+    if not IS_WINDOWS:
+        return []
+    try:
+        import asyncio
+
+        import mss
+        from PIL import Image, ImageOps
+        from winsdk.windows.graphics.imaging import BitmapAlphaMode, BitmapPixelFormat, SoftwareBitmap
+        from winsdk.windows.media.ocr import OcrEngine
+        from winsdk.windows.security.cryptography import CryptographicBuffer
+    except Exception:  # noqa: BLE001  (OCR indisponible : on fait sans)
+        return []
+    if monitor is not None:
+        n = monitor
+    else:  # l'écran de la fenêtre active, pas celui de la dernière capture : c'est là qu'on agit
+        try:
+            import mss as _mss
+
+            with _mss.MSS() as _s:
+                n = _monitor_of_foreground(_s.monitors)
+        except Exception:  # noqa: BLE001
+            n = _LAST_CAPTURE.get("monitor") or 1
+    try:
+        with mss.MSS() as s:
+            m = s.monitors[0] if n == 0 else s.monitors[max(1, min(n, len(s.monitors) - 1))]
+            shot = s.grab(m)
+            img = Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
+        engine = OcrEngine.try_create_from_user_profile_languages()
+        if engine is None:
+            return []
+
+        async def lire(image):
+            data = CryptographicBuffer.create_from_byte_array(image.convert("RGBA").tobytes())
+            bmp = SoftwareBitmap.create_copy_from_buffer(data, BitmapPixelFormat.RGBA8, image.width, image.height,
+                                                         BitmapAlphaMode.STRAIGHT)
+            return await engine.recognize_async(bmp)
+
+        # Deux lectures de 0,15 s : l'image telle quelle, puis en gris contrasté et doublée, qui récupère les
+        # libellés pâles des interfaces sombres (le « Library » d'Epic Games, illisible à la première passe).
+        double = ImageOps.autocontrast(img.convert("L"), cutoff=1).convert("RGB")
+        double = double.resize((img.width * 2, img.height * 2), Image.LANCZOS)
+        passes = [(asyncio.run(lire(img)), 1), (asyncio.run(lire(double)), 2)]
+    except Exception:  # noqa: BLE001
+        return []
+    els: list[dict] = []
+    vus: set = set()
+    for res, echelle in passes:
+        for ligne in res.lines:
+            mots = list(ligne.words)
+            if not mots:
+                continue
+            # Un bouton porte souvent plusieurs mots : on garde la ligne entière ET chaque mot,
+            # pour que click_element trouve aussi bien « Vérifier les mises à jour » que « Bibliothèque ».
+            r0, rn = mots[0].bounding_rect, mots[-1].bounding_rect
+            candidats = []
+            texte = ligne.text.strip()
+            if texte and len(texte) <= 60:
+                candidats.append((texte, "Texte", (r0.x + rn.x + rn.width) / 2, r0.y + r0.height / 2))
+            for mot in mots:
+                t = mot.text.strip()
+                if 3 <= len(t) <= 40:
+                    r = mot.bounding_rect
+                    candidats.append((t, "Mot", r.x + r.width / 2, r.y + r.height / 2))
+            for nom, genre, cx, cy in candidats:
+                x, y = int(m["left"] + cx / echelle), int(m["top"] + cy / echelle)
+                cle = (nom.lower(), x // 12, y // 12)  # même mot vu par les deux lectures
+                if cle in vus:
+                    continue
+                vus.add(cle)
+                els.append({"name": nom, "type": genre, "x": x, "y": y})
+    # La capture couvre tout l'écran : on ne garde que le texte situé DANS la fenêtre active, sinon les
+    # onglets du navigateur d'à côté noient les boutons de l'application visée.
+    try:
+        r = _foreground_window().rectangle()
+        if r.right - r.left > 200 and r.bottom - r.top > 200:
+            dedans = [e for e in els if r.left <= e["x"] <= r.right and r.top <= e["y"] <= r.bottom]
+            if len(dedans) >= 5:
+                els = dedans
+    except Exception:  # noqa: BLE001
+        pass
+    els.sort(key=lambda e: (e["type"] == "Mot", e["y"], e["x"]))  # libellés entiers d'abord, mots ensuite
+    return els
+
+
 def ui_elements(max_items: int = 120, timeout: float = 6.0) -> list[dict]:
     """Éléments interactifs visibles de la fenêtre active : [{name, type, x, y}]. Partiel si trop lent."""
     global _last_elements
@@ -204,6 +295,9 @@ def ui_elements(max_items: int = 120, timeout: float = 6.0) -> list[dict]:
     t.join(timeout)
     snapshot = list(result)
     snapshot.sort(key=lambda e: (e["type"] == "Text", e["y"], e["x"]))  # actionnables d'abord
+    if not snapshot:  # interface dessinée par l'application : on lit le texte à l'image
+        snapshot = ocr_elements()
+        max_items = max(max_items, 200)  # l'OCR renvoie les lignes ET les mots : il faut de la place
     _last_elements = snapshot[:max_items]
     return _last_elements
 
@@ -236,7 +330,12 @@ def describe_screen(monitor: int = 0) -> tuple[Path, str]:
                      "refais see_screen avec monitor=-1 pour voir les deux d'un coup, ou donne le nom de la "
                      "fenêtre dans window pour que je la trouve toute seule.")
     if els:
-        lines.append("Éléments de la fenêtre active (nom [type] -> x,y), utilisables avec click_element :")
+        if all(e["type"] in ("Texte", "Mot") for e in els):
+            lines.append("Cette application ne publie pas ses boutons : voici le TEXTE lu à l'image "
+                         "(nom [type] -> x,y). click_element marche sur ces mots, et leurs coordonnées sont "
+                         "les vraies : sers-t'en plutôt que de deviner une position.")
+        else:
+            lines.append("Éléments de la fenêtre active (nom [type] -> x,y), utilisables avec click_element :")
         for e in els:
             lines.append(f"  - {e['name']} [{e['type']}] -> {e['x']},{e['y']}")
     else:
@@ -389,10 +488,15 @@ def click_element(name: str, double: bool = False) -> str:
     if e is None:
         g = _LAST_CAPTURE.get("left", 0)
         d = g + _LAST_CAPTURE.get("w", 1920) - 1
-        return (f"Aucun élément nommé « {name} » dans la dernière capture : RIEN n'a été cliqué. Si la liste "
-                "d'éléments était vide, l'application dessine son interface elle-même et click_element ne marchera "
-                f"jamais dessus : repère le bouton sur l'image et clique avec click(x, y), x entre {g} et {d} "
-                "d'après la grille rouge, puis refais see_screen pour vérifier.")
+        noms = [e["name"] for e in _last_elements if e.get("type") != "Mot"][:15]
+        if noms:
+            return (f"Aucun élément nommé « {name} » : RIEN n'a été cliqué. N'invente pas de coordonnées. "
+                    "Voici ce qui est réellement cliquable par son nom : " + " | ".join(noms)
+                    + ". Reprends un de ces noms exactement, ou clique sur un point que tu LIS sur l'image avec "
+                    f"click(x, y), x entre {g} et {d}.")
+        return (f"Aucun élément nommé « {name} » dans la dernière capture : RIEN n'a été cliqué. Aucun élément "
+                "n'est listé, l'application dessine son interface elle-même : repère le bouton sur l'image et "
+                f"clique avec click(x, y), x entre {g} et {d} d'après la grille rouge, puis refais see_screen.")
     msg = _click_raw(e["x"], e["y"], double=double)  # coordonnées déjà réelles : pas de correction
     time.sleep(1.0)  # laisse l'écran changer avant la capture suivante
     return f"{msg} sur « {e['name']} » [{e['type']}]. Vérifie avec see_screen que la page attendue est bien affichée avant de conclure."
