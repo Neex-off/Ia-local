@@ -53,6 +53,49 @@ def _notifier(message: str, titre: str = "Jarvis") -> None:
         pass
 
 
+_SERIE = re.compile(
+    r"(\d+)\s*(?:s[eé]ries?\s*(?:de\s*)?|x\s*)(\d+)\s*(?:r[eé]p\w*)?\s*"
+    r"(?:[aà]|@)?\s*([\d]+(?:[.,]\d+)?)\s*(?:kg|kilos?)", re.I)
+
+
+def _seances_journal() -> list[dict]:
+    """Seances de sport notees via journal_add : on en extrait series, repetitions et charge.
+
+    Le modele passe souvent par journal_add, qui est toujours visible, plutot que par log_set.
+    Sans cela l'historique de musculation resterait vide.
+    """
+    try:
+        import journal
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for e in journal.entries(3650, "sport"):
+        texte = e.get("texte", "")
+        m = _SERIE.search(texte)
+        if not m:
+            continue
+        avant = texte[:m.start()].strip(" :,-")
+        exercice = avant.split(":")[-1].strip() or "seance"
+        out.append({"date": e["date"], "exercice": exercice[:60], "series": int(m.group(1)),
+                    "reps": int(m.group(2)), "charge": float(m.group(3).replace(",", ".")),
+                    "ressenti": texte[m.end():].strip(" .,")[:40], "source": "journal"})
+    return out
+
+
+def _toutes_seances() -> list[dict]:
+    """Toutes les seances connues : celles de log_set et celles reperees dans le journal, par date."""
+    d = _charge(MUSCU, {"seances": [], "poids": []})
+    tout = list(d.get("seances", [])) + _seances_journal()
+    vus, propre = set(), []
+    for x in tout:
+        cle = (x["date"], _norm(x["exercice"]), x["series"], x["reps"], x["charge"])
+        if cle not in vus:
+            vus.add(cle)
+            propre.append(x)
+    propre.sort(key=lambda x: x["date"])
+    return propre
+
+
 # --------------------------------------------------------------------------
 # Musculation
 # --------------------------------------------------------------------------
@@ -86,7 +129,7 @@ def workout_history(exercise: str = "", days: int = 60) -> str:
     """
     d = _charge(MUSCU, {"seances": [], "poids": []})
     limite = (date.today() - timedelta(days=max(1, int(days)))).isoformat()
-    seances = [s for s in d["seances"] if s["date"] >= limite
+    seances = [s for s in _toutes_seances() if s["date"] >= limite
                and (not exercise or _norm(exercise) in _norm(s["exercice"]))]
     if not seances:
         return f"Aucune séance enregistrée{' pour ' + exercise if exercise else ''} sur {days} jours."
@@ -107,7 +150,7 @@ def one_rep_max(exercise: str) -> str:
         exercise: Nom de l'exercice.
     """
     d = _charge(MUSCU, {"seances": [], "poids": []})
-    seances = [s for s in d["seances"] if _norm(exercise) in _norm(s["exercice"])]
+    seances = [s for s in _toutes_seances() if _norm(exercise) in _norm(s["exercice"])]
     if not seances:
         return f"Aucune série enregistrée pour {exercise}. Utilise log_set après ta prochaine séance."
     best = max(seances, key=lambda s: s["charge"] * (1 + s["reps"] / 30))
@@ -124,7 +167,7 @@ def next_load(exercise: str) -> str:
         exercise: Nom de l'exercice.
     """
     d = _charge(MUSCU, {"seances": [], "poids": []})
-    seances = [s for s in d["seances"] if _norm(exercise) in _norm(s["exercice"])]
+    seances = [s for s in _toutes_seances() if _norm(exercise) in _norm(s["exercice"])]
     if not seances:
         return f"Aucun historique sur {exercise}. Enregistre une séance et je pourrai te conseiller."
     dernier = seances[-1]

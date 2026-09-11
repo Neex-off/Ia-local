@@ -49,6 +49,15 @@ _TASK = re.compile(r"\b(verifie|vérifie|regarde si|trouve|cherche|configure|ins
                    r"repare|répare|active|desactive|désactive|change|regle|règle|ouvre|lance|ferme|nettoie|optimise|"
                    r"telecharge|télécharge|branche|connecte|scanne|analyse|verifier|vérifier)\b", re.I)
 
+# Affirme avoir fait quelque chose (« c'est noté », « j'ai enregistré ») : interdit sans appel d'outil.
+_CLAIM = re.compile(
+    r"(c'est not[eé]|c'est fait|c'est enregistr[eé]|c'est ajout[eé]|"
+    r"j'ai (?:bien |déjà )?(?:not[eé]|enregistr[eé]|ajout[eé]|cr[eé]{2}|"
+    r"supprim[eé]|envoy[eé]|ferm[eé]|ouvert|lanc[eé]|modifi[eé]|"
+    r"install[eé]|rang[eé]|t[eé]l[eé]charg[eé]|sauvegard[eé]|"
+    r"mis à jour|mis dans|programm[eé]|plac[eé]))",
+    re.I)
+
 TOOL_CUES = {
     "web_search": "Je regarde sur internet.", "research": "Je me renseigne sur internet.",
     "fetch_url": "Je lis la page.", "open_site": "Je cherche le site.",
@@ -626,7 +635,10 @@ class JarvisCore:
                         self._say(cue)
                     self._set_state("thinking")
 
+            outils_appeles = {"n": 0}
+
             def on_tool(name, args, result):
+                outils_appeles["n"] += 1
                 self._set_state("tool")
                 if result.startswith("[[secret]]"):
                     # Mot de passe tapé dans un champ de mot de passe : on le masque partout.
@@ -652,6 +664,17 @@ class JarvisCore:
                 if not more:
                     break
                 answer = (answer.rstrip() + "\n\n" + more.strip()).strip()
+            # Pire cas : il AFFIRME avoir fait quelque chose sans avoir appelé le moindre outil.
+            if answer and not outils_appeles["n"] and _CLAIM.search(answer) and not self._stop_speech.is_set():
+                print(f"[jarvis] affirmation sans action (« {answer.strip()[:60]} ») : je le renvoie faire", flush=True)
+                self.messages.append({"role": "user", "content":
+                    "(Tu affirmes avoir fait quelque chose alors que tu n'as appelé AUCUN outil, donc rien n'a été "
+                    "fait. Fais-le vraiment maintenant : si l'outil te manque, ouvre la bonne boîte avec "
+                    "open_toolbox, appelle l'outil, puis donne le résultat réel. Si c'est impossible, dis-le franchement.)"})
+                more = run_turn(self.messages, self.model, show=False, on_tool=on_tool,
+                                cancel_event=self._stop_speech, on_tool_start=on_tool_start, on_content=on_content)
+                if more:
+                    answer = more.strip() if outils_appeles["n"] else (answer.rstrip() + "\n\n" + more.strip())
             if secrets:
                 self._scrub(secrets)
                 for s in secrets:
