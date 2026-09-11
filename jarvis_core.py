@@ -58,6 +58,36 @@ _CLAIM = re.compile(
     r"mis à jour|mis dans|programm[eé]|plac[eé]))",
     re.I)
 
+# Mots qui rattachent une demande à une boîte à outils. S'il répond sans avoir appelé d'outil sur un de ces
+# sujets, c'est qu'il a inventé au lieu de lire les vraies données.
+_BOITE_MOTS = {
+    "vie": ("seance", "muscu", "developpe", "squat", "souleve", "repetition", "serie", "charge",
+            "mon poids", "je pese", "calories", "proteine", "courses", "flashcard", "revision", "meteo",
+            "itineraire", "heure de depart", "rappel sante"),
+    "business": ("facture", "devis", "client", "prospect", "impaye", "chiffre d affaires", "depense",
+                 "compta", "tva", "cotisation", "urssaf", "rentabilite"),
+    "machine": ("disque", "espace libre", "temperature", "pilote", "wifi", "wi fi", "debit", "antivirus",
+                "pare feu", "port ouvert", "demarrage de windows", "service windows"),
+    "fichiers": ("doublon", "gros fichier", "corbeille", "ranger mon", "renommer en masse", "fusionner"),
+    "web": ("mes mails", "mon mail", "historique de navigation", "favori", "page surveillee",
+            "combien de temps j ai passe", "chronometre"),
+    "serveur": ("serveur", "deploie", "deploiement", "base de donnees", "requete sql", "nom de domaine"),
+    "contenu": ("sous titre", "montage", "couper les silences", "miniature", "palette", "obs", "teleprompteur"),
+    "code": ("couverture de test", "code mort", "dependance", "lint", "audit de securite du code"),
+    "ia": ("transcri", "comparer les modeles", "base de connaissance"),
+    "systeme": ("presse papier", "luminosite", "fond d ecran", "epingle"),
+}
+
+
+def _sans_accents(texte: str) -> str:
+    """Texte en minuscules, sans accents ni ponctuation, pour comparer aux mots-clés des boîtes."""
+    import unicodedata
+
+    t = unicodedata.normalize("NFKD", str(texte).lower())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9 ]+", " ", t)
+
+
 TOOL_CUES = {
     "web_search": "Je regarde sur internet.", "research": "Je me renseigne sur internet.",
     "fetch_url": "Je lis la page.", "open_site": "Je cherche le site.",
@@ -675,6 +705,22 @@ class JarvisCore:
                                 cancel_event=self._stop_speech, on_tool_start=on_tool_start, on_content=on_content)
                 if more:
                     answer = more.strip() if outils_appeles["n"] else (answer.rstrip() + "\n\n" + more.strip())
+            # Il a répondu de tête sur un sujet dont les vraies données sont dans une boîte à outils :
+            # sans outil appelé, la réponse est inventée. On le renvoie chercher la vraie donnée.
+            if answer and not outils_appeles["n"] and not self._stop_speech.is_set():
+                propre = _sans_accents(user)
+                boite = next((b for b, mots in _BOITE_MOTS.items() if any(m in propre for m in mots)), None)
+                if boite:
+                    print(f"[jarvis] réponse de tête sur « {boite} » sans outil : je le renvoie chercher", flush=True)
+                    self.messages.append({"role": "user", "content":
+                        f"(Tu viens de répondre sans consulter les vraies données. Ouvre la boîte avec "
+                        f"open_toolbox(\"{boite}\"), appelle l'outil qui donne l'information exacte, puis "
+                        "réponds à partir de ce qu'il renvoie. Si aucun outil ne convient, dis-le franchement.)"})
+                    more = run_turn(self.messages, self.model, show=False, on_tool=on_tool,
+                                    cancel_event=self._stop_speech, on_tool_start=on_tool_start,
+                                    on_content=on_content)
+                    if more and outils_appeles["n"]:
+                        answer = more.strip()
             if secrets:
                 self._scrub(secrets)
                 for s in secrets:
