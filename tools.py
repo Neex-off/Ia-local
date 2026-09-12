@@ -626,7 +626,26 @@ def _close_app_unix(name: str, app: str, force: bool) -> str:
     time.sleep(2.5)
     if alive():
         return f"J'ai demandé à {app} de se fermer mais il tourne encore (une boîte de dialogue « Enregistrer ? » peut bloquer : see_screen). Dis « force » pour l'arrêter."
+    _note_fermee(app)
     return f"Fermé : {app} (processus terminé)."
+
+
+def _note_fermee(nom: str) -> None:
+    """Retient l'application fermée pour reopen_last_closed (boîte automation)."""
+    try:
+        import json as _json
+        from datetime import datetime as _dt
+
+        p = config.ROOT / "memoire" / "fermes.json"
+        try:
+            liste = _json.loads(p.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            liste = []
+        liste.append({"nom": nom, "t": _dt.now().isoformat(timespec="minutes")})
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_json.dumps(liste[-20:], ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def close_app(name: str, force: bool = False) -> str:
@@ -717,6 +736,7 @@ def close_app(name: str, force: bool = False) -> str:
             return f"Processus arrêté de force : {', '.join(closed)} (pid {', '.join(map(str, alive))})."
         if alive:
             return f"Fenêtre fermée : {', '.join(closed)}. L'application tourne encore en arrière-plan (icône près de l'horloge) ; si tu veux l'arrêter complètement, dis-le et j'utiliserai force=True."
+        _note_fermee(name)
         return f"Fermé : {', '.join(closed)} (fenêtre disparue, processus terminé)."
     except Exception as exc:  # noqa: BLE001
         return f"Erreur en fermant {name} : {exc}"
@@ -1632,6 +1652,31 @@ def focus_window(title: str) -> str:
 # Les montrer tous en permanence noierait le modèle (chaque outil coûte du contexte).
 # --------------------------------------------------------------------------
 TOOLBOXES = {
+    "noyau": ("outils_noyau",
+              "ce que j'ai fait (journal d'audit), annuler la dernière action, arrêt d'urgence, mode privé, activer ou "
+              "désactiver un module, auto-diagnostic, statistiques et récap annuel, personnalité, permissions, "
+              "exporter/importer la configuration, installer un module tiers, créer un nouvel outil, se mettre à jour, "
+              "accès à distance (téléphone, Stream Deck), voix du propriétaire"),
+    "windows": ("outils_windows",
+                "registre, fonctionnalités Windows, tâches planifiées, plans d'alimentation, applications par défaut, "
+                "résolution/Hz/HDR/écran principal, mise à jour des pilotes, installer Windows Update, restaurer un point, "
+                "sfc/DISM, TRIM, éjecter une clé USB, partitions et BitLocker, mots de passe Wi-Fi, VPN, DNS, proxy, "
+                "bloquer des sites (focus), pare-feu, Wake-on-LAN, luminosité des écrans externes, RGB, ventilateurs, "
+                "consommation électrique, alerte surchauffe, commande en administrateur"),
+    "securite": ("outils_securite",
+                 "fuite d'un e-mail ou d'un mot de passe, analyser un fichier suspect, signature d'un exécutable, hash et "
+                 "VirusTotal, connexions et tâches planifiées suspectes, échecs de connexion, journaux d'événements, "
+                 "nouvel appareil sur le Wi-Fi, extensions de navigateur dangereuses, checklist 2FA, mot de passe fort, "
+                 "fichiers pièges, couper le réseau, rapport de sécurité hebdomadaire, audit de sécurité d'un projet"),
+    "jeux": ("outils_jeux",
+             "vérifier les fichiers d'un jeu, overlay FPS et ping, profils souris par jeu, réglages graphiques, temps de "
+             "jeu, anti-tilt, analyser une partie en vidéo, Rich Presence et modération Discord, planifier une session "
+             "entre amis, installer ou désinstaller un jeu (Steam, Epic), tester un logiciel inconnu dans le bac à sable"),
+    "automation": ("outils_automation",
+                   "enregistrer et rejouer des macros, expansion de texte (raccourcis), vitesse et accélération souris, "
+                   "disposition clavier, taper un emoji, remplacer un mot dans tous les fichiers d'un dossier, sauvegarder "
+                   "et restaurer une session de travail, bureaux virtuels, historique du presse-papiers, enregistrer "
+                   "l'écran en vidéo, mode présentation, éclairage nocturne, rouvrir la dernière application fermée"),
     "systeme": ("outils_systeme",
                 "programmes en cours et les arrêter, placer/épingler/réduire les fenêtres, presse-papiers, "
                 "luminosité, thème clair ou sombre, fond d'écran, barre des tâches, ne pas déranger, "
@@ -1700,7 +1745,20 @@ def open_toolbox(domain: str) -> str:
              "fichier": "fichiers", "documents": "fichiers", "images": "fichiers", "pdf": "fichiers",
              "rangement": "fichiers", "photos": "fichiers",
              "materiel": "machine", "reseau": "machine", "disque": "machine", "disques": "machine",
-             "securite": "machine", "windows": "machine", "wifi": "machine", "antivirus": "machine",
+             "wifi": "machine", "antivirus": "machine",
+             "cybersecurite": "securite", "cyber": "securite", "fuite": "securite", "virus": "securite",
+             "phishing": "securite", "piege": "securite", "2fa": "securite",
+             "registre": "windows", "parefeu": "windows", "firewall": "windows", "dns": "windows", "vpn": "windows",
+             "hosts": "windows", "focus": "windows", "pilotes": "windows", "update": "windows", "admin": "windows",
+             "rgb": "windows", "ventilateurs": "windows", "surchauffe": "windows", "usb": "windows",
+             "jeu": "jeux", "gaming": "jeux", "steam": "jeux", "epic": "jeux", "discord": "jeux", "fps": "jeux",
+             "sandbox": "jeux", "bacasable": "jeux",
+             "macro": "automation", "macros": "automation", "raccourcis": "automation", "raccourci": "automation",
+             "session": "automation", "sessions": "automation", "bureaux": "automation", "emoji": "automation",
+             "clavier": "automation", "souris": "automation", "enregistrement": "automation", "presentation": "automation",
+             "journal": "noyau", "audit": "noyau", "annuler": "noyau", "urgence": "noyau", "permissions": "noyau",
+             "modules": "noyau", "module": "noyau", "personnalite": "noyau", "configuration": "noyau", "prive": "noyau",
+             "statistiques": "noyau", "miseajour": "noyau", "distance": "noyau",
              "git": "dev", "logiciels": "dev", "docker": "dev", "projet": "dev",
              "tests": "code", "qualite": "code", "api": "code", "seo": "code", "accessibilite": "code",
              "navigateur": "web", "mails": "web", "mail": "web", "messages": "web", "veille": "web",
@@ -1720,6 +1778,10 @@ def open_toolbox(domain: str) -> str:
     if d not in TOOLBOXES:
         return (f"Boîte inconnue : « {domain} ». Choisis parmi : " + ", ".join(TOOLBOXES)
                 + ".\n" + "\n".join(f"- {n} : {desc}" for n, (_m, desc) in TOOLBOXES.items()))
+    import noyau
+
+    if not noyau.module_actif(d):
+        return f"Le module « {d} » est désactivé : toggle_module(\"{d}\", True) dans la boîte noyau pour le réactiver."
     if d not in _TOOLBOX_TOOLS:
         return f"La boîte « {d} » n'a pas pu être chargée sur cet ordinateur."
     if d in _OPENED:

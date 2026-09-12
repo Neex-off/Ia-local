@@ -11,6 +11,12 @@ pystray
 pillow
 pycaw; sys_platform == "win32"
 winsdk; sys_platform == "win32"
+opencv-python-headless<4.11
+cryptography
+pypresence
+monitorcontrol
+watchdog
+pynput
 psutil
 pypdf
 openpyxl

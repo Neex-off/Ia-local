@@ -567,3 +567,10 @@ TOOLS = [list_servers, server_status, server_logs, server_restart_service, serve
          db_schema, db_query, db_write, db_export_csv, db_import_csv, db_health,
          expo_start, android_emulator, generate_app_icons,
          background_task, background_status]
+
+try:
+    from outils_serveur_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] serveur_plus indisponible : {_exc}")

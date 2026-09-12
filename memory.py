@@ -162,6 +162,13 @@ def knowledge_prompt_section(limit: int = 30) -> str:
 def log_message(role: str, text: str) -> None:
     if not text:
         return
+    try:
+        import noyau
+
+        if noyau.est_prive():  # mode privé : rien n'est retenu
+            return
+    except Exception:  # noqa: BLE001
+        pass
     DIR.mkdir(parents=True, exist_ok=True)
     with _lock, LOG.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps({"t": time.time(), "date": datetime.now().isoformat(timespec="seconds"),

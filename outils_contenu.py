@@ -649,3 +649,10 @@ TOOLS = [remove_silence, normalize_audio, denoise_audio, extract_audio, trim_vid
          palette_from_image, check_contrast, resize_for_social, make_favicon, email_signature,
          plan_content, content_calendar, update_content, teleprompter,
          game_mode, ping_servers, clear_shader_cache, obs_control]
+
+try:
+    from outils_contenu_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] contenu_plus indisponible : {_exc}")

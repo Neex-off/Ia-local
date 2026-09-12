@@ -597,3 +597,10 @@ TOOLS = [download_file, save_page, watch_page, check_watched, list_watched, unwa
          browser_history, browser_bookmarks, notify,
          read_email, send_email, send_message, check_link,
          time_start, time_stop, time_report, pomodoro, active_window_now, day_summary]
+
+try:
+    from outils_web_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] web_plus indisponible : {_exc}")

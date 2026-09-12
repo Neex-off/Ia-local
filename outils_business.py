@@ -408,3 +408,10 @@ def seo_position(site: str, keyword: str) -> str:
 TOOLS = [add_client, list_clients, create_invoice, list_invoices, mark_paid, unpaid_report, estimate_project,
          add_expense, revenue_report, tax_check, export_accounting, tax_deadlines,
          site_uptime, domain_expiry, seo_position]
+
+try:
+    from outils_business_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] business_plus indisponible : {_exc}")

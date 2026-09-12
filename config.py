@@ -180,6 +180,24 @@ PROJECT_DIRS = [Path.home() / "Desktop", Path.home() / "Documents", Path.home() 
 # et mets-le dans la variable d'environnement GITHUB_TOKEN, ou ici (le fichier reste local).
 GITHUB_USER = ""  # ton identifiant GitHub, ex. "mon-compte"
 GITHUB_TOKEN = ""
+# Clés facultatives des services externes : sans clé, l'outil explique quoi configurer et fait ce qu'il peut sans.
+VIRUSTOTAL_KEY = ""        # virustotal.com > API key : vérifier un hash de fichier
+HIBP_KEY = ""              # haveibeenpwned.com/API/Key : fuites d'e-mail
+STRIPE_KEY = ""            # clé secrète Stripe (sk_…) : paiements, MRR, remboursements
+YOUTUBE_KEY = ""           # Google Cloud > YouTube Data API v3 : stats et commentaires
+YOUTUBE_CHANNEL_ID = ""    # id de ta chaîne (UC…)
+TELEGRAM_TOKEN = ""        # @BotFather : piloter Jarvis par Telegram
+TELEGRAM_CHAT_ID = ""      # ton id de conversation (le bot n'écoute que toi)
+DISCORD_TOKEN = ""         # token de bot Discord : modération
+DISCORD_APP_ID = ""        # Application ID Discord : Rich Presence
+FIGMA_TOKEN = ""           # figma.com > Settings > Personal access tokens
+HOME_ASSISTANT_URL = ""    # ex. http://homeassistant.local:8123
+HOME_ASSISTANT_TOKEN = ""  # jeton d'accès longue durée
+TMDB_KEY = ""              # themoviedb.org : recommandations films et séries
+OBSIDIAN_VAULT = ""        # chemin du coffre Obsidian (ou d'un dossier de notes Markdown)
+COMFYUI_URL = "http://127.0.0.1:8188"  # ComfyUI local pour la génération d'images
+EAS_PROJECT = ""           # dossier du projet Expo pour les builds/soumissions
+TRYHACKME_USER = ""        # pseudo TryHackMe pour le suivi de progression
 
 # Timeout des commandes shell lancées par l'agent, en secondes.
 COMMAND_TIMEOUT = 60
@@ -187,6 +205,16 @@ COMMAND_TIMEOUT = 60
 # True : l'agent lance les commandes PowerShell sans demander de confirmation.
 # (Obligatoire pour l'interface Jarvis : la question « Autoriser ? » bloquerait tout.)
 AUTO_APPROVE_COMMANDS = True
+# Les outils sensibles (éteindre, pare-feu, DNS, envoyer un mail, pousser du code…) demandent-ils une confirmation ?
+# False = exécution directe (choix de l'utilisateur). True = l'assistant demande « je confirme ? » avant.
+CONFIRM_SENSITIVE = False
+# Jeton facultatif pour le bouton /action (Stream Deck, téléphone, autre PC) : vide = pas de jeton.
+REMOTE_TOKEN = ""
+# Dépôt GitHub public d'où self_update télécharge la nouvelle version.
+UPDATE_REPO = "Neex-off/Ia-local"
+# Estimations pour power_consumption : puissance max du processeur (W) et prix du kWh (€).
+CPU_TDP_W = 120
+PRIX_KWH = 0.25
 
 # ---------------------------------------------------------------------------
 # Mode vocal (agent_vocal.py)
@@ -297,7 +325,7 @@ Tu disposes d'outils. Utilise-les quand ils sont utiles, pas systématiquement :
 - MAILS : « lis mes mails non lus » -> check_app("mails") ; dans la liste Gmail, les mails NON LUS sont ceux en gras / marqués non lus dans les éléments ; clique sur le premier (click_element avec son objet), see_screen, lis l'expéditeur, l'objet et le contenu, résume-le ; reviens à la liste (press_keys("alt+left") ou click_element("Boîte de réception")) et passe au suivant, 3 mails maximum sauf demande. Termine par un résumé global. Pour répondre ou archiver, utilise les boutons visibles (click_element) puis type_text.
 - RÉGLAGES D'UNE APPLI : « change tel paramètre dans Spotify / Discord / Windows » -> check_app(appli), puis navigue : click_element("Paramètres") ou press_keys("ctrl+,") selon l'appli, see_screen, click_element sur la rubrique, ajuste (click_element / type_text / press_keys), see_screen pour vérifier, et dis ce que tu as changé. Tu PEUX manipuler n'importe quelle application ainsi.
 - APPRENDRE : tu PEUX apprendre par toi-même. Quand l'utilisateur te demande de te renseigner, d'apprendre ou de te documenter sur un sujet (« renseigne-toi sur… », « apprends… », « documente-toi sur… »), appelle research(sujet), lis la matière, résume ce que tu as compris en quelques phrases, puis enregistre-le avec learn(sujet, résumé, sources). Ne dis jamais que tu ne peux pas apprendre ou chercher : tu le peux, avec ces outils. Ce que tu as appris est relu au démarrage et retrouvable avec recall.
-- BOÎTES À OUTILS : tes outils de base ne sont qu'une petite partie de ce que tu sais faire. Plus de deux cents autres attendent dans onze boîtes, que tu ouvres avec open_toolbox(domaine) :
+- BOÎTES À OUTILS : tes outils de base ne sont qu'une petite partie de ce que tu sais faire. Plus de quatre cent cinquante autres attendent dans seize boîtes, que tu ouvres avec open_toolbox(domaine) :
     open_toolbox("systeme") : programmes en cours, arrêter un programme bloqué, placer ou épingler les fenêtres, presse-papiers, luminosité, thème clair ou sombre, fond d'écran, ne pas déranger, verrouiller, veille, éteindre.
     open_toolbox("fichiers") : chercher un texte DANS les fichiers, doublons, gros fichiers, ranger un dossier, corbeille, renommage en masse, zip, lire un PDF ou un Word ou un Excel, fusionner un PDF, convertir et compresser des images.
     open_toolbox("machine") : espace disque, santé des disques, nettoyage, matériel et températures, pilotes, réseau, débit internet, Wi-Fi, sécurité et antivirus, programmes au démarrage, services, Windows Update, point de restauration.
@@ -310,6 +338,11 @@ Tu disposes d'outils. Utilise-les quand ils sont utiles, pas systématiquement :
     open_toolbox("business") : clients, devis et factures avec PDF, impayés, estimation de projet, dépenses, bilan, seuils fiscaux, export comptable, surveillance d'un site, certificat, position dans les moteurs.
     open_toolbox("contenu") : couper les silences, normaliser et nettoyer le son, découper et assembler des vidéos, sous-titres automatiques, palette de couleurs, contraste, formats réseaux sociaux, favicon, calendrier éditorial, téléprompteur, mode jeu, latence, OBS.
     open_toolbox("serveur") : serveurs distants par SSH, journaux, services, DNS, déploiement et retour arrière, page de statut, bases de données, Expo et émulateur Android, icônes d'application, tâches longues en arrière-plan.
+    open_toolbox("noyau") : « qu'est-ce que tu as fait ? » (journal), annuler la dernière action, arrêt d'urgence, mode privé, activer ou désactiver un module, auto-diagnostic, statistiques, personnalité (sérieux, sarcastique, coach…), permissions, exporter la configuration, installer un module, créer un nouvel outil, se mettre à jour, accès depuis le téléphone.
+    open_toolbox("windows") : registre, fonctionnalités Windows, tâches planifiées, plans d'alimentation, applications par défaut, résolution et Hz, mettre à jour les pilotes, installer Windows Update, restaurer un point, sfc/DISM, TRIM, éjecter une clé USB, partitions et BitLocker, mots de passe Wi-Fi, VPN, DNS, proxy, bloquer des sites (focus), pare-feu, Wake-on-LAN, écrans externes, RGB, ventilateurs, consommation, alerte surchauffe.
+    open_toolbox("securite") : fuite d'un e-mail ou d'un mot de passe, analyser un fichier suspect, signature d'un exécutable, hash/VirusTotal, connexions et tâches suspectes, échecs de connexion, journaux d'événements, nouvel appareil sur le Wi-Fi, extensions dangereuses, checklist 2FA, mot de passe fort, fichiers pièges, couper le réseau, rapport de sécurité, audit d'un projet.
+    open_toolbox("jeux") : vérifier les fichiers d'un jeu, overlay FPS, profils souris par jeu, réglages graphiques, temps de jeu, anti-tilt, analyser une partie, Discord (présence, modération), session entre amis, installer un jeu, bac à sable Windows.
+    open_toolbox("automation") : macros, expansion de texte, souris et clavier, emojis, remplacer un mot dans des fichiers, sessions de travail, bureaux virtuels, historique du presse-papiers, enregistrer l'écran, mode présentation, éclairage nocturne, rouvrir la dernière application fermée.
   Dès qu'une demande sort de ta panoplie de base, ouvre la boîte correspondante AVANT de dire que tu ne sais pas faire. Ne dis JAMAIS « je n'ai pas cet outil » ni « je ne peux pas » sans avoir essayé open_toolbox. Tu peux ouvrir une boîte et t'en servir dans la même réponse. Si tu hésites sur le domaine, open_toolbox("liste") te les rappelle.
 - MÉTHODE POUR UNE TÂCHE VAGUE : l'utilisateur ne connaît pas forcément le nom exact des applications. Réfléchis d'abord à la voie : quelle application ou quel réglage permet de faire ça sur Windows ? Si tu ne sais pas, cherche sur le web (« comment vérifier … sous Windows 11 »). Si open_app / see_screen / focus_window échoue avec un nom, ne t'arrête pas : list_apps("mot-clé") donne les vrais noms installés, list_windows() les fenêtres ouvertes, et essaie les synonymes (« NVIDIA App » = « GeForce Experience », « Paramètres » = « Settings »).
 - SAVOIR-FAIRE WINDOWS : pilotes / mise à jour carte graphique NVIDIA -> open_app("NVIDIA App") puis see_screen, onglet « Pilotes » (ou open_url("https://www.nvidia.com/fr-fr/drivers/")) ; carte AMD -> « AMD Software: Adrenalin Edition » ; mises à jour Windows -> open_url("ms-settings:windowsupdate") ; son -> open_url("ms-settings:sound") ; Bluetooth -> open_url("ms-settings:bluetooth") ; Wi-Fi -> open_url("ms-settings:network-wifi") ; écran -> open_url("ms-settings:display") ; applis installées -> open_url("ms-settings:appsfeatures") ; démarrage -> open_url("ms-settings:startupapps") ; stockage -> open_url("ms-settings:storagesense") ; gestionnaire de périphériques -> run_command("devmgmt.msc") ; gestionnaire des tâches -> run_command("taskmgr") ; version Windows / matériel -> run_command("systeminfo") ou run_command("nvidia-smi") pour la carte NVIDIA (version du pilote incluse).

@@ -347,3 +347,10 @@ TOOLS = [git_status, git_log, git_diff, git_branches, git_switch, git_commit, gi
          scan_secrets, run_project,
          list_software, install_software, uninstall_software, update_software, install_package,
          docker_containers, docker_control, ollama_models]
+
+try:
+    from outils_dev_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] dev_plus indisponible : {_exc}")

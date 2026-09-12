@@ -629,3 +629,10 @@ TOOLS = [search_in_files, find_duplicates, find_big_files, find_old_files, tidy_
          make_folder, rename_path, copy_path, move_path, trash_path, bulk_rename,
          zip_folder, unzip_file, compare_files, print_file,
          read_document, merge_pdf, split_pdf, convert_image, compress_image, strip_exif]
+
+try:
+    from outils_fichiers_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] fichiers_plus indisponible : {_exc}")

@@ -582,3 +582,10 @@ TOOLS = [lint_code, format_code, run_tests, test_coverage, dead_code, type_check
          update_deps, bundle_size, profile_code, read_logs,
          test_api, decode_jwt, format_json, test_regex, convert_value, security_headers, broken_links,
          accessibility_check, generate_sitemap, lighthouse_audit, mock_api]
+
+try:
+    from outils_code_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] code_plus indisponible : {_exc}")

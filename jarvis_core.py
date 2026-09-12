@@ -82,6 +82,18 @@ _BOITE_MOTS = {
     "code": ("couverture de test", "code mort", "dependance", "lint", "audit de securite du code"),
     "ia": ("transcri", "comparer les modeles", "base de connaissance"),
     "systeme": ("presse papier", "luminosite", "fond d ecran", "epingle"),
+    "noyau": ("qu est ce que tu as fait", "annule la derniere", "mode prive", "statistiques d utilisation",
+              "personnalite", "mets toi a jour", "auto diagnostic"),
+    "windows": ("registre", "tache planifiee", "plan d alimentation", "point de restauration", "sfc", "dism",
+                "ejecte", "mot de passe wifi", "vpn", "dns", "bloque le site", "bloque youtube", "pare feu",
+                "wake on lan", "rgb", "ventilateur", "consommation electrique", "surchauffe", "bitlocker"),
+    "securite": ("fuite", "a fuite", "fichier suspect", "signature", "virustotal", "phishing", "2fa",
+                 "mot de passe fort", "piege", "rapport de securite", "connexions suspectes"),
+    "jeux": ("fichiers du jeu", "fps", "temps de jeu", "anti tilt", "rich presence", "discord", "session de jeu",
+             "installe le jeu", "bac a sable", "sandbox"),
+    "automation": ("macro", "raccourci texte", "expansion", "dpi", "disposition clavier", "emoji", "remplace dans",
+                   "session de travail", "bureau virtuel", "historique du presse", "enregistre l ecran",
+                   "mode presentation", "eclairage nocturne", "lumiere bleue", "rouvre la derniere"),
 }
 
 
@@ -130,6 +142,11 @@ class JarvisCore:
         self.emit = emit
         self.model = model or config.MODEL
         self.messages: list[dict] = [{"role": "system", "content": VOICE_SYSTEM_PROMPT}]
+        # Le noyau (arrêt d'urgence, mode privé, alertes de fond) a besoin de trois leviers sur la voix.
+        import noyau
+
+        noyau.hooks.update({"stop": self.stop_speaking, "mic": self.set_mic, "texte": self.submit_text,
+                            "dire": lambda t: self._say(t, interruptible=True)})
         self.awake = False
         self.state = "loading"
         self.mic_enabled = True
@@ -279,7 +296,8 @@ class JarvisCore:
         import skills
         tools.UI_EMIT = self.emit
         self.messages[0]["content"] = (VOICE_SYSTEM_PROMPT + "\n\n" + skills.get().prompt_section()
-                                       + "\n\n" + memory.prompt_section() + "\n\n" + memory.knowledge_prompt_section())
+                                       + ("" if noyau.est_demo() else "\n\n" + memory.prompt_section() + "\n\n" + memory.knowledge_prompt_section())
+                                       + noyau.prompt_personnalite() + noyau.prompt_permissions())
         self.emit({"type": "loading", "step": f"Modèle de langage {self.model}", "done": False})
         wanted = self.model
         try:
@@ -767,6 +785,11 @@ class JarvisCore:
                 for s in secrets:
                     answer = answer.replace(s, "••••••••")
         self.emit({"type": "assistant", "text": answer, "seconds": round(time.time() - t, 1)})
+        for ecouteur in list(noyau.hooks.get("reponses", [])):  # passerelles (Telegram…) qui relaient la réponse
+            try:
+                ecouteur(answer)
+            except Exception:  # noqa: BLE001
+                pass
         memory.log_message("assistant", answer)
         if stream["q"] is not None:
             if stream["active"]:

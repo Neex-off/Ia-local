@@ -146,6 +146,19 @@ async def sleep_if_no_client() -> None:
         print("[jarvis] page fermée : retour en veille", flush=True)
 
 
+@app.get("/action")
+async def action(text: str = "", token: str = ""):
+    """Bouton physique, Stream Deck, téléphone ou autre PC : /action?text=… envoie une phrase à Jarvis."""
+    attendu = getattr(config, "REMOTE_TOKEN", "")
+    if attendu and token != attendu:
+        return {"ok": False, "erreur": "jeton invalide"}
+    if core is None or core.state == "loading" or not text.strip():
+        return {"ok": False, "erreur": "pas prêt ou texte vide"}
+    core.wake()
+    core.submit_text(text.strip())
+    return {"ok": True}
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()

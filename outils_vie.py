@@ -633,3 +633,10 @@ TOOLS = [log_set, workout_history, one_rep_max, next_load, rest_timer, log_weigh
          phone_status, phone_screenshot, phone_notifications, phone_transfer, phone_mirror,
          add_flashcard, review_flashcards, grade_flashcard,
          weather, itinerary, departure_time]
+
+try:
+    from outils_vie_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] vie_plus indisponible : {_exc}")

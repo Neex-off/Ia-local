@@ -371,3 +371,10 @@ def search_documents(question: str, count: int = 4) -> str:
 
 TOOLS = [compare_models, benchmark_model, recommend_model, pull_model, remove_model, create_model_profile,
          model_news, transcribe_media, upscale_image, remove_background, index_documents, search_documents]
+
+try:
+    from outils_ia_plus import TOOLS as _PLUS
+
+    TOOLS += _PLUS
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] ia_plus indisponible : {_exc}")

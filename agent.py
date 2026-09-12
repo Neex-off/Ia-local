@@ -321,10 +321,22 @@ def run_turn(messages: list[dict], model: str, show: bool = True, on_tool=None, 
             if fn is None:
                 result = f"Erreur : outil inconnu '{name}'"
             else:
-                try:
-                    result = fn(**args)
-                except TypeError as exc:
-                    result = f"Erreur d'arguments : {exc}"
+                import time as _time
+
+                import noyau
+
+                refus = noyau.before_call(name, args)  # permissions, arrêt d'urgence, commandes interdites
+                if refus is not None:
+                    result = refus
+                else:
+                    t_outil = _time.time()
+                    try:
+                        result = fn(**args)
+                    except TypeError as exc:
+                        result = f"Erreur d'arguments : {exc}"
+                    except Exception as exc:  # noqa: BLE001
+                        result = f"Erreur dans l'outil {name} : {exc}"
+                    noyau.after_call(name, args, str(result), _time.time() - t_outil)  # journal d'audit
             if show:
                 preview = result if len(result) <= 300 else result[:300] + " …"
                 console.print(f"[dim]  ↳ {preview}[/dim]")
