@@ -162,7 +162,52 @@
   .up .t { color: #fff; }
   .up .no { font-size: 11px; color: var(--muted); }
   .empty { color: var(--muted); font-size: 12px; }
-  @media (prefers-reduced-motion: reduce) { .hud, .msg, .tool, .proj { transition: none; animation: none; opacity: 1; transform: none; } }
+  /* ---- Vues journée, journal, sport : même disposition que l'agenda ---- */
+  body.view-day #scene, body.view-journal #scene, body.view-sport #scene { transform: translate(-1vw, -1vh) scale(0.5); }
+  body.view-day #tools, body.view-day #stats, body.view-journal #tools, body.view-journal #stats, body.view-sport #tools, body.view-sport #stats { opacity: 0; pointer-events: none; transform: translateY(14px); }
+  body.view-day #log, body.view-journal #log, body.view-sport #log { left: 24px; top: 92px; bottom: auto; width: calc(35vw - 24px); max-height: 32vh; }
+  body.view-day #input, body.view-journal #input, body.view-sport #input { left: auto; right: 24px; transform: none; width: calc(62vw - 24px); }
+  .vue { position: fixed; top: 92px; right: 24px; bottom: 100px; left: 38vw; display: none; overflow: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .vue::-webkit-scrollbar { width: 4px; } .vue::-webkit-scrollbar-thumb { background: var(--line); }
+  body.view-day #day, body.view-journal #journal, body.view-sport #sport { display: block; }
+  .vue .head { display: flex; align-items: baseline; gap: 18px; margin: 0 0 16px 4px; flex-wrap: wrap; }
+  .vue h1 { margin: 0; font-size: 22px; letter-spacing: 6px; font-weight: 300; color: #fff; text-shadow: 0 0 18px var(--cyan-dim); }
+  .vue .sub { color: var(--muted); font-size: 12px; letter-spacing: 2px; }
+  .vue .back { margin-left: auto; }
+  .vue .head button { padding: 5px 10px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; align-items: start; }
+  .card { padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; backdrop-filter: blur(8px);
+    opacity: 0; transform: translateY(14px); animation: projin var(--std) var(--ease) forwards; }
+  .card.wide { grid-column: 1 / -1; }
+  .card h2 { margin: 0 0 10px; font-size: 11px; letter-spacing: 3px; text-transform: uppercase; color: var(--cyan); }
+  .card .big { font-size: 26px; color: #fff; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .card .small { font-size: 12px; color: var(--muted); margin-top: 4px; white-space: pre-wrap; }
+  .card .line { padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; display: flex; gap: 10px; align-items: baseline; }
+  .card .line:first-of-type { border-top: 0; }
+  .card .line .w { color: var(--muted); font-size: 11px; min-width: 92px; letter-spacing: 1px; flex-shrink: 0; }
+  .card .line .t { color: #fff; }
+  .card .line .soon { color: var(--amber); }
+  .card .line .now { color: var(--cyan); }
+  .jl { font-family: Consolas, "Courier New", monospace; font-size: 12px; padding: 6px 10px; border-left: 2px solid var(--cyan); margin: 0 0 6px;
+    background: rgba(79,216,255,0.05); opacity: 0; animation: msgin var(--std) var(--ease) forwards; }
+  .jl.erreur, .jl.bloquee, .jl.refusee { border-color: var(--red); background: rgba(255,92,108,0.06); }
+  .jl.echec, .jl.attente { border-color: var(--amber); background: rgba(255,180,87,0.06); }
+  .jl .t { color: var(--muted); margin-right: 8px; } .jl .n { color: var(--cyan); } .jl .a { color: var(--text); }
+  .jl .r { color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 44px; overflow: hidden; margin-top: 2px; }
+  .jl .s { float: right; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+  .jl.erreur .s, .jl.bloquee .s, .jl.refusee .s { color: var(--red); } .jl.echec .s, .jl.attente .s { color: var(--amber); }
+  #journal .actions { display: flex; gap: 10px; margin: 0 0 14px 4px; align-items: center; flex-wrap: wrap; }
+  button.danger { color: var(--red); border-color: rgba(255,92,108,0.5); } button.danger:hover { background: rgba(255,92,108,0.12); border-color: var(--red); }
+  .badge { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.on { color: var(--red); border-color: var(--red); animation: blink 0.9s var(--ease) infinite; }
+  .chart { width: 100%; height: 110px; display: block; margin-top: 8px; }
+  .chart .l { fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .p { fill: var(--cyan); } .chart .p.last { fill: #fff; }
+  .chart text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+  .chart .g { stroke: var(--line); stroke-width: 1; }
+  .photos { display: flex; gap: 10px; flex-wrap: wrap; } .photos img { height: 170px; border-radius: 4px; border: 1px solid var(--line); }
+  .photos figure { margin: 0; text-align: center; } .photos figcaption { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  @media (prefers-reduced-motion: reduce) { .hud, .msg, .tool, .proj, .card, .jl { transition: none; animation: none; opacity: 1; transform: none; } }
 </style>
 </head>
 <body data-state="loading">
@@ -187,6 +232,19 @@
   <div class="head"><h1>AGENDA</h1><button id="aprev" title="Mois précédent">‹</button><span class="month" id="amonth"></span><button id="anext" title="Mois suivant">›</button><button class="back" id="aback">Retour</button></div>
   <div class="cal" id="acal"></div>
   <div class="upcoming"><h2>À venir</h2><div id="aup"></div></div>
+</div>
+<div class="vue" id="day">
+  <div class="head"><h1>JOURNÉE</h1><span class="sub" id="daylabel"></span><button id="dayrefresh" title="Actualiser">↻</button><button class="back" data-back>Retour</button></div>
+  <div class="cards" id="daycards"></div>
+</div>
+<div class="vue" id="journal">
+  <div class="head"><h1>JOURNAL</h1><span class="sub" id="jsub"></span><span class="badge" id="jarret">arrêt d'urgence</span><button class="back" data-back>Retour</button></div>
+  <div class="actions"><button id="jundo">Annuler la dernière action</button><button class="danger" id="jstop">Arrêt d'urgence</button><button id="jresume">Reprendre</button><button id="jrefresh">↻</button></div>
+  <div id="jlist"></div>
+</div>
+<div class="vue" id="sport">
+  <div class="head"><h1>SPORT</h1><span class="sub" id="ssub"></span><button id="srefresh" title="Actualiser">↻</button><button class="back" data-back>Retour</button></div>
+  <div class="cards" id="scards"></div>
 </div>
 <div class="hud" id="log"><h2>Conversation</h2><div id="msgs"></div></div>
 <div class="hud" id="tools"><h2>Outils</h2><div id="toollist"><div style="font-size:12px;color:var(--muted)">Aucun outil utilisé pour l'instant.</div></div></div>
@@ -250,7 +308,7 @@ function handle(ev) {
     case 'heard': if (!ev.for_me) addMsg('heard', '', `« ${ev.text} » (pas pour moi)`); else addMsg('heard', '', `🔔 « ${ev.text} »`); break;
     case 'user': addMsg('user', 'Toi', ev.text); break;
     case 'assistant': addMsg('ai', $('name').textContent, ev.text + (ev.seconds ? `  ·  ${ev.seconds}s` : '')); break;
-    case 'tool': addTool(ev); break;
+    case 'tool': addTool(ev); if (currentView === 'journal') { const x = jlEntry({ t: new Date().toISOString(), outil: ev.name, args: ev.args, statut: 'ok', detail: (ev.result || '').slice(0, 160) }); $('jlist').prepend(x); } break;
     case 'error': addMsg('error', 'Erreur', ev.text); break;
     case 'stats':
       $('vram').textContent = `${ev.vram_used.toFixed(1)} / ${ev.vram_total.toFixed(0)} Go`;
@@ -289,8 +347,11 @@ function addTool(ev) {
 }
 
 // ------------------------------------------------------------------ vue projets
+const VIEWS = ['projects', 'agenda', 'day', 'journal', 'sport'];
+let currentView = 'home';
 function setView(view, projects, ev) {
-  document.body.classList.remove('view-projects', 'view-agenda');
+  document.body.classList.remove(...VIEWS.map(v => 'view-' + v));
+  currentView = VIEWS.includes(view) ? view : 'home';
   if (view === 'projects') {
     renderProjects(projects || []);
     document.body.classList.add('view-projects');
@@ -299,8 +360,113 @@ function setView(view, projects, ev) {
     const t = new Date(A.today || Date.now()); A.year = t.getFullYear(); A.month = t.getMonth();
     renderAgenda();
     document.body.classList.add('view-agenda');
-  }
+  } else if (view === 'day') { renderDay(ev || {}); document.body.classList.add('view-day'); }
+  else if (view === 'journal') { renderJournal(ev || {}); document.body.classList.add('view-journal'); }
+  else if (view === 'sport') { renderSport(ev || {}); document.body.classList.add('view-sport'); }
 }
+document.querySelectorAll('[data-back]').forEach(b => b.onclick = () => { setView('home'); send({ type: 'view', view: 'home' }); });
+
+// ------------------------------------------------------------------ vue journée
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+function card(title, wide) { const c = el('div', 'card' + (wide ? ' wide' : '')); c.appendChild(el('h2', '', title)); return c; }
+function line(w, t, cls) { const l = el('div', 'line'); l.appendChild(el('span', 'w', w)); l.appendChild(el('span', 't' + (cls ? ' ' + cls : ''), t)); return l; }
+const dateFr = s => { const d = new Date(s + 'T00:00:00'); return `${JOURS[(d.getDay() + 6) % 7]} ${d.getDate()} ${MOIS[d.getMonth()]}`; };
+function renderDay(p) {
+  $('daylabel').textContent = p.today_label || '';
+  const box = $('daycards'); box.innerHTML = '';
+  const today = (p.events || []).filter(e => e.date === p.today), next = (p.events || []).filter(e => e.date !== p.today);
+  let c = card("Aujourd'hui");
+  if (!today.length) c.appendChild(el('div', 'small', 'Rien de prévu.'));
+  today.forEach(e => c.appendChild(line(e.heure ? e.heure.replace(':', 'h') : 'journée', e.titre + (e.note ? ' — ' + e.note : ''), 'now')));
+  box.appendChild(c);
+  c = card('3 prochains jours');
+  if (!next.length) c.appendChild(el('div', 'small', 'Rien de prévu.'));
+  next.slice(0, 8).forEach(e => c.appendChild(line(dateFr(e.date) + (e.heure ? ' ' + e.heure.replace(':', 'h') : ''), e.titre)));
+  box.appendChild(c);
+  c = card('Échéances et dates');
+  const ed = [...(p.echeances || []).map(x => ({ ...x, k: 'échéance' })), ...(p.dates || []).map(x => ({ ...x, k: x.type || 'date' }))].sort((a, b) => a.dans - b.dans);
+  if (!ed.length) c.appendChild(el('div', 'small', 'Rien dans les 30 jours.'));
+  ed.slice(0, 8).forEach(x => c.appendChild(line(x.dans === 0 ? "aujourd'hui" : `dans ${x.dans} j`, `${x.nom} (${x.k})`, x.dans <= 3 ? 'soon' : '')));
+  box.appendChild(c);
+  c = card('Météo'); c.appendChild(el('div', 'small', p.meteo || 'Indisponible (hors ligne ?)')); box.appendChild(c);
+  c = card('Sport');
+  if (p.sport) { c.appendChild(el('div', 'big', dateFr(p.sport.date))); c.appendChild(el('div', 'small', p.sport.texte)); } else c.appendChild(el('div', 'small', 'Aucune séance notée.'));
+  box.appendChild(c);
+  c = card('Sommeil et humeur');
+  if (p.sommeil) { c.appendChild(el('div', 'big', `${p.sommeil.heures} h`)); c.appendChild(el('div', 'small', `nuit du ${dateFr(p.sommeil.date)}` + (p.sommeil.qualite ? ` · qualité ${p.sommeil.qualite}/5` : ''))); }
+  else c.appendChild(el('div', 'small', 'Sommeil non noté (« j\'ai dormi 7 heures »).'));
+  if (p.humeur) c.appendChild(el('div', 'small', `Humeur (${dateFr(p.humeur.date)}) : ${p.humeur.texte}`));
+  box.appendChild(c);
+  c = card('Jarvis, 24 h'); c.appendChild(el('div', 'big', `${p.actions || 0} actions`)); c.appendChild(el('div', 'small', `${p.erreurs || 0} en erreur ou refusées`)); box.appendChild(c);
+  [...box.children].forEach((k, i) => k.style.animationDelay = Math.min(i * 50, 400) + 'ms');
+}
+$('dayrefresh').onclick = () => send({ type: 'refresh', view: 'day' });
+
+// ------------------------------------------------------------------ vue journal
+const J = { actions: [] };
+function jlEntry(d) {
+  const st = (d.statut || 'ok').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '');
+  const x = el('div', 'jl ' + st);
+  x.appendChild(el('span', 's', d.statut || 'ok'));
+  x.appendChild(el('span', 't', (d.t || '').slice(11, 19)));
+  x.appendChild(el('span', 'n', d.outil));
+  x.appendChild(el('span', 'a', '(' + Object.entries(d.args || {}).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ').slice(0, 140) + ')'));
+  if (d.detail) x.appendChild(el('div', 'r', d.detail));
+  return x;
+}
+function renderJournal(p) {
+  if (p.actions) J.actions = p.actions;
+  const box = $('jlist'); box.innerHTML = '';
+  if (!J.actions.length) box.appendChild(el('div', 'empty', 'Aucune action enregistrée.'));
+  J.actions.forEach((d, i) => { const x = jlEntry(d); x.style.animationDelay = Math.min(i * 20, 300) + 'ms'; box.appendChild(x); });
+  if (p.semaine) $('jsub').textContent = `${p.semaine.actions} actions cette semaine · ` + Object.entries(p.semaine.statuts || {}).map(([k, v]) => `${v} ${k}`).join(', ');
+  $('jarret').classList.toggle('on', !!p.arret);
+  $('jresume').hidden = !p.arret;
+}
+$('jundo').onclick = () => send({ type: 'undo', view: 'journal' });
+$('jstop').onclick = () => send({ type: 'stop_all', view: 'journal' });
+$('jresume').onclick = () => send({ type: 'resume', view: 'journal' });
+$('jrefresh').onclick = () => send({ type: 'refresh', view: 'journal' });
+
+// ------------------------------------------------------------------ vue sport
+function chart(points, key) {
+  const W = 420, H = 110, m = 18;
+  const vals = points.map(p => p[key]); const lo = Math.min(...vals), hi = Math.max(...vals);
+  const x = i => m + (points.length > 1 ? i / (points.length - 1) : 0.5) * (W - 2 * m);
+  const y = v => hi === lo ? H / 2 : H - m - (v - lo) / (hi - lo) * (H - 2 * m);
+  const ns = 'http://www.w3.org/2000/svg'; const s = document.createElementNS(ns, 'svg'); s.setAttribute('viewBox', `0 0 ${W} ${H}`); s.setAttribute('class', 'chart');
+  [lo, hi].forEach(v => { const g = document.createElementNS(ns, 'line'); g.setAttribute('class', 'g'); g.setAttribute('x1', m); g.setAttribute('x2', W - m); g.setAttribute('y1', y(v)); g.setAttribute('y2', y(v)); s.appendChild(g);
+    const t = document.createElementNS(ns, 'text'); t.setAttribute('x', 0); t.setAttribute('y', y(v) + 3); t.textContent = `${v}`; s.appendChild(t); });
+  const path = document.createElementNS(ns, 'path'); path.setAttribute('class', 'l'); path.setAttribute('d', points.map((p, i) => (i ? 'L' : 'M') + x(i) + ' ' + y(p[key])).join(' ')); s.appendChild(path);
+  points.forEach((p, i) => { const c = document.createElementNS(ns, 'circle'); c.setAttribute('class', 'p' + (i === points.length - 1 ? ' last' : '')); c.setAttribute('cx', x(i)); c.setAttribute('cy', y(p[key])); c.setAttribute('r', 3);
+    const title = document.createElementNS(ns, 'title'); title.textContent = `${p.date} : ${p[key]}` + (p.series ? ` (${p.series}×${p.reps})` : ''); c.appendChild(title); s.appendChild(c); });
+  if (points.length) { const t = document.createElementNS(ns, 'text'); t.setAttribute('x', m); t.setAttribute('y', H - 2); t.textContent = points[0].date.slice(5); s.appendChild(t);
+    const t2 = document.createElementNS(ns, 'text'); t2.setAttribute('x', W - m - 30); t2.setAttribute('y', H - 2); t2.textContent = points[points.length - 1].date.slice(5); s.appendChild(t2); }
+  return s;
+}
+function renderSport(p) {
+  $('ssub').textContent = p.seances ? `${p.seances} jours de séance · ${p.semaine || 0} cette semaine · dernière le ${p.derniere ? dateFr(p.derniere) : '—'}` : 'aucune séance enregistrée';
+  const box = $('scards'); box.innerHTML = '';
+  (p.exercices || []).forEach(e => {
+    const c = card(e.nom);
+    c.appendChild(el('div', 'big', `${e.dernier.charge} kg`));
+    c.appendChild(el('div', 'small', `${e.dernier.series}×${e.dernier.reps} le ${dateFr(e.dernier.date)} · record ${e.max} kg · ${e.n} séances` + (e.dernier.ressenti ? ` · ${e.dernier.ressenti}` : '')));
+    if (e.points.length > 1) c.appendChild(chart(e.points, 'charge'));
+    if (e.conseil) c.appendChild(el('div', 'small', '➜ ' + e.conseil));
+    box.appendChild(c);
+  });
+  if (p.poids && p.poids.length) { const c = card('Poids de corps'); const last = p.poids[p.poids.length - 1];
+    c.appendChild(el('div', 'big', `${last.poids ?? last.kg ?? last.valeur ?? ''} kg`)); c.appendChild(el('div', 'small', `le ${dateFr((last.date || '').slice(0, 10))}`));
+    const pts = p.poids.filter(x => x.date).map(x => ({ date: x.date.slice(0, 10), charge: x.poids ?? x.kg ?? x.valeur })).filter(x => typeof x.charge === 'number');
+    if (pts.length > 1) c.appendChild(chart(pts, 'charge')); box.appendChild(c); }
+  if (p.photos && p.photos.length) { const c = card('Photos de progression', true); const ph = el('div', 'photos');
+    const show = p.photos.length > 4 ? [p.photos[0], ...p.photos.slice(-3)] : p.photos;
+    show.forEach(n => { const f = el('figure'); const img = document.createElement('img'); img.src = '/progression/' + encodeURIComponent(n); img.alt = n; f.appendChild(img); f.appendChild(el('figcaption', '', n.replace(/\.[^.]+$/, ''))); ph.appendChild(f); });
+    c.appendChild(ph); box.appendChild(c); }
+  if (!box.children.length) { const c = card('Rien pour l\'instant'); c.appendChild(el('div', 'small', 'Dis-moi tes séries (« développé couché 4 fois 8 à 80 kilos ») et elles apparaîtront ici.')); box.appendChild(c); }
+  [...box.children].forEach((k, i) => k.style.animationDelay = Math.min(i * 50, 400) + 'ms');
+}
+$('srefresh').onclick = () => send({ type: 'refresh', view: 'sport' });
 
 // ------------------------------------------------------------------ vue agenda
 const A = { events: [], today: null, year: 0, month: 0 };

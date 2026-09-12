@@ -1007,6 +1007,54 @@ def hide_agenda() -> str:
     return "Agenda fermé."
 
 
+# --------------------------------------------------------------------------
+# Vues : journée, journal des actions, sport
+# --------------------------------------------------------------------------
+
+def show_day() -> str:
+    """Affiche le tableau de bord de la journée à l'écran (rendez-vous du jour et des 3 prochains jours, échéances, anniversaires, météo, dernière séance de sport, sommeil, humeur) et te le résume. « Montre la journée », « mon tableau de bord », « qu'est-ce que j'ai aujourd'hui »."""
+    import vues
+
+    p = vues.journee()
+    if UI_EMIT is not None:
+        UI_EMIT({"type": "view", "view": "day", **p})
+    return vues.journee_resume(p) + ("\n(Tableau de bord affiché à l'écran.)" if UI_EMIT else "")
+
+
+def show_journal(count: int = 40) -> str:
+    """Affiche à l'écran le journal de tout ce que tu as fait (outil, arguments, résultat, statut), avec les boutons Annuler et Arrêt d'urgence, et te renvoie les dernières actions. « Montre ce que tu as fait », « montre le journal ».
+
+    Args:
+        count: Nombre d'actions à afficher.
+    """
+    import vues
+
+    p = vues.journal_actions(int(count))
+    if UI_EMIT is not None:
+        UI_EMIT({"type": "view", "view": "journal", **p})
+    lignes = [f"{d['t'][11:16]} {d['outil']} -> {d['statut']}" for d in p["actions"][:12]]
+    return ("Journal affiché à l'écran.\n" if UI_EMIT else "") + ("\n".join(lignes) or "Aucune action enregistrée.")
+
+
+def show_sport() -> str:
+    """Affiche le tableau de bord sport (courbe des charges par exercice, dernière séance, charge conseillée, poids, photos de progression) et te le résume. « Montre le sport », « ma progression à la salle »."""
+    import vues
+
+    p = vues.sport()
+    if UI_EMIT is not None:
+        UI_EMIT({"type": "view", "view": "sport", **p})
+    return vues.sport_resume(p) + ("\n(Tableau de bord sport affiché à l'écran.)" if UI_EMIT else "")
+
+
+def hide_view() -> str:
+    """Referme la vue affichée (journée, journal, sport, projets, agenda) et remet l'interface normale (« retour », « ferme », « écran normal »)."""
+    global _AGENDA_OPEN
+    if UI_EMIT is not None:
+        UI_EMIT({"type": "view", "view": "home"})
+    _AGENDA_OPEN = False
+    return "Vue fermée."
+
+
 def add_event(title: str, date: str, time: str = "", note: str = "") -> str:
     """Ajoute un rendez-vous ou un rappel dans l'agenda. Calcule d'abord la date exacte à partir d'aujourd'hui (donné dans le message) : « jeudi » = le prochain jeudi, « demain » = aujourd'hui + 1.
 
@@ -1798,6 +1846,7 @@ def open_toolbox(domain: str) -> str:
 
 TOOLS = [open_toolbox, get_datetime, calculate, remember, recall, forget, research, learn, show_projects, hide_projects,
          show_agenda, hide_agenda, agenda_month, add_event, remove_event, list_events, journal_add, journal_read,
+         show_day, show_journal, show_sport, hide_view,
          list_models, switch_model, switch_voice, list_skills, use_skill,
          search_files, open_file, list_files, read_file, write_file, create_pdf, create_docx,
          check_app, list_apps, open_app, close_app, open_site, open_url, run_command, web_search, fetch_url,

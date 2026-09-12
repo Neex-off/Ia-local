@@ -146,6 +146,15 @@ async def sleep_if_no_client() -> None:
         print("[jarvis] page fermée : retour en veille", flush=True)
 
 
+@app.get("/progression/{name}")
+async def progression(name: str):
+    """Photos de progression (vue sport)."""
+    p = (config.ROOT / "memoire" / "progression" / Path(name).name)
+    if not p.is_file():
+        return {"erreur": "introuvable"}
+    return FileResponse(p)
+
+
 @app.get("/action")
 async def action(text: str = "", token: str = ""):
     """Bouton physique, Stream Deck, téléphone ou autre PC : /action?text=… envoie une phrase à Jarvis."""
@@ -207,6 +216,24 @@ async def ws_endpoint(ws: WebSocket):
                     import tools
                     tools._AGENDA_OPEN = False
                     tools._AGENDA_SHOWN.clear()
+            elif kind in ("undo", "stop_all", "resume", "refresh"):  # boutons des vues journée / journal / sport
+                import noyau
+                import vues
+
+                if kind == "undo":
+                    emit({"type": "assistant", "text": noyau.undo_last(), "seconds": 0})
+                elif kind == "stop_all":
+                    core.stop_speaking()
+                    emit({"type": "assistant", "text": noyau.arret_urgence(), "seconds": 0})
+                elif kind == "resume":
+                    emit({"type": "assistant", "text": noyau.reprendre(), "seconds": 0})
+                quelle = str(msg.get("view", "journal"))
+                if quelle == "day":
+                    emit({"type": "view", "view": "day", **vues.journee()})
+                elif quelle == "sport":
+                    emit({"type": "view", "view": "sport", **vues.sport()})
+                else:
+                    emit({"type": "view", "view": "journal", **vues.journal_actions(40)})
             elif kind == "agenda_month":  # boutons < > de l'agenda : le serveur suit le mois affiché
                 import tools
                 try:
