@@ -26,6 +26,7 @@ import time
 import ollama
 
 import config
+import noyau
 import file_index
 from agent import ensure_model, model_tier, run_turn
 from voice import Speaker, Transcriber, is_sleep_phrase, is_stop_phrase, listen, strip_wake_word
