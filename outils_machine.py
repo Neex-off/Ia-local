@@ -316,3 +316,10 @@ TOOLS = [disk_space, disk_health, clean_temp, hardware_info, list_drivers,
          network_info, speed_test, open_ports, wifi_list, wifi_connect, lan_devices,
          security_check, antivirus_scan, startup_programs, list_services, control_service,
          check_windows_update, create_restore_point]
+
+try:
+    from outils_windows import external_brightness, fan_curve, overheat_alert, power_consumption, rgb_control
+
+    TOOLS += [power_consumption, overheat_alert, external_brightness, rgb_control, fan_curve]
+except Exception as _exc:  # noqa: BLE001
+    print(f"[outils] matériel avancé indisponible : {_exc}")

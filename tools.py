@@ -1690,7 +1690,7 @@ TOOLBOXES = {
                 "espace disque, santé des disques, nettoyage des temporaires, état du matériel et températures, "
                 "pilotes, réseau et adresse IP, débit internet, ports ouverts, Wi-Fi, appareils du réseau local, "
                 "bilan de sécurité et antivirus, programmes au démarrage, services Windows, Windows Update, "
-                "point de restauration"),
+                "point de restauration, consommation électrique, alerte surchauffe, écrans externes, RGB, ventilateurs"),
     "dev": ("outils_dev",
             "git (état, historique, branches, changer de branche, commit, push, annuler), secrets oubliés dans le "
             "code, lancer un projet, logiciels installés (installer, désinstaller, mettre à jour), pip/npm/cargo, "
